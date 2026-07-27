@@ -29,14 +29,16 @@ from workspace_api import router as workspace_router, init_workspace_db
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+# 1. أضيفي هذه الاستيرادات الجديدة للملفات الثابتة
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
 
 # استيراد الـ Routers والـ Database Inits
 # (تأكدي من صحة اسم الملفات والمجلدات لديكِ)
 
 
-
-
-# 1. إنشاء التطبيق
+# إنشاء التطبيق
 app = FastAPI(
     title="وكيل خدمة العملاء الذكي | Customer Service AI Agent",
     description=(
@@ -45,6 +47,17 @@ app = FastAPI(
     ),
     version="1.0.0",
 )
+
+# 2. ربط مجلد الـ static لخدمة ملفات الـ CSS, JS والصور
+# (تأكدي أن مجلد static يقع في نفس المجلد الذي يحتوي على main.py)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# 3. فتح صفحة index.html تلقائيًا عند فتح الرابط الرئيسي للموقع
+@app.get("/", include_in_schema=False)
+def read_root():
+    return FileResponse("static/index.html")
+
+# ضعي باقي الـ Routers و الـ CORSMiddleware الخاصة بكِ أسفل هذا السطر...
 
 # 2. إعدادات الـ CORS (مرة واحدة تكفي)
 app.add_middleware(
