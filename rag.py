@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import List, Optional
 
-from app.config import settings
+from config import settings
 
 # نمط للتعرف على الكلمات، يشمل الحروف العربية والإنجليزية والأرقام
 _TOKEN_PATTERN = re.compile(r"[A-Za-z\u0600-\u06FF]+", re.UNICODE)
