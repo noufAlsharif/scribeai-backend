@@ -31,7 +31,7 @@ import re
 from functools import lru_cache
 from typing import Dict, List, Optional, Set, Tuple
 
-from app.config import settings
+from config import settings
 
 # ---------------------------------------------------------------------------
 # أدوات نصية (مستقلة حتى لا تعتمد على قاعدة معرفة الدعم)
