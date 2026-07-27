@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from database import init_db, get_db, Conversation, Ticket
-from app.models import (
+from models import (
     ChatRequest,
     ChatResponse,
     TicketCreate,
