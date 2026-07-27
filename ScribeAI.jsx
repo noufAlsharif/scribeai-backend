@@ -1,0 +1,1916 @@
+import React, { useState, useEffect, useRef } from "react";
+
+/* ============================================================
+   ScribeAI — Academic Scribe Dashboard
+   Reports -> Sources -> Workspace (split)
+
+   The Workspace "AI agent" runs FULLY CLIENT-SIDE with NO API
+   keys. It is a faithful port of the uploaded project:
+     - rag.py       -> cosine-similarity search over sources (KB)
+     - agent.py     -> rule-based decision engine (4 actions)
+     - tools.py     -> ticket + conversation "tools"
+     - models.py    -> ChatResponse shape
+   Actions: answer | create_ticket | escalate | check_ticket
+   ============================================================ */
+
+const C = {
+  navy: "#0b2148", royal: "#1746c4", royal2: "#2d5bd8", royalSoft: "#e9effc",
+  ink: "#0f1b33", slate: "#5b6b86", mut: "#8a97ad", line: "#e4e9f2",
+  mist: "#f4f7fc", white: "#ffffff", gold: "#b3852f", goldSoft: "#f6eeda",
+  good: "#1f8a54", goodSoft: "#e6f6ec", bad: "#c0392b", badSoft: "#fdeceb",
+  amber: "#c07b12", violet: "#6b3fb0", violetSoft: "#efe8fb",
+  teal: "#0e7c86", tealSoft: "#dff1f3",
+};
+
+
+/* ---------------- i18n ---------------- */
+const STR = {
+  en: {
+    brand: "ScribeAI", tagline: "Academic Scribe",
+    reports: "Reports", reportsSub: "Your academic reports and their research sources.",
+    addReport: "Add report", newReport: "Untitled report",
+    newReportTitle: "New report", reportTitleLabel: "Report title", dueDateLabel: "Submission due date",
+    optional: "optional", titleRequired: "Please enter a report title.", createReport: "Create report", dueLabel: "Due",
+    sources: "Sources", sourcesSub: "Research sources for this report — they are the agent's knowledge base.",
+    addSource: "Add source", upload: "Upload file", search: "Search sources",
+    tabFile: "Upload file", tabUrl: "Add web URL", urlPh: "https://example.com/article",
+    fetchAdd: "Fetch & add source", fetching: "Fetching & summarizing…",
+    resTitle: "Title", resSummary: "Summary", resCitation: "IEEE citation",
+    addToSources: "Add to sources", cancel: "Cancel",
+    dropHint: "Choose a .txt, .md, .json or .csv file to add as a source.",
+    chooseFile: "Choose file", urlError: "Enter a valid URL starting with http:// or https://",
+    backendNote: "Preview mode: the citation is built locally. On the server, /api/sources/add-url fetches the page with trafilatura and generates the title and summary with the LLM.",
+    citation: "IEEE citation", openWs: "Open workspace", reportOf: "sources", fileTag: "file", webTag: "web", linkLabel: "Source link",
+    assistant: "Writing assistant", send: "Send", thinking: "Working…", offline: "offline",
+    assistantCtx: "I answer from your own sources — nothing invented.",
+    assistantIntro: "Ask me about your sources:",
+    assistantExamples: ["“summarize” — a summary of this source",
+                        "“what do my sources say about X?”",
+                        "“extract types of VR” — pulls a list from a long source",
+                        "“cite: <your sentence>” — finds the right source",
+                        "“key points” — the main findings as a list"],
+    askAssistant: "Ask about your sources…", insertDraft: "Insert into draft",
+    qExtract: "Extract…", qSummarize: "Summarize", qKeyPoints: "Key points", qOutline: "Outline",
+    intents: { extract: "Extracted", summarize: "Summary", keypoints: "Key points", search: "From your sources",
+               cite: "Citation suggestion", outline: "Outline", help: "Help" },
+    workspace: "Workspace", agent: "AI agent", ruleBadge: "Rule-based · no API key",
+    kbLabel: "ScribeAI · CourseSync KB",
+    ctxNote: "Ask about the platform — ScribeAI, CourseSync, IEEE citations — or this report's sources.",
+    ask: "Message the agent…", send: "Send", tickets: "Tickets",
+    empty: "Ask about the platform (ScribeAI, CourseSync, IEEE), your sources, or paste a link to summarize. The agent picks the right action and runs its tool.",
+    tryThese: "Try",
+    editor: "Draft editor",
+    draftPh: "Write your rough draft, then enhance to insert IEEE citations and a references section…",
+    words: "words", chars: "chars", noSpaces: "no spaces", pages: "Pages", page: "Page", enhance: "Enhance & insert citation", enhancing: "Enhancing…",
+    history: "Version history", noVersions: "No versions yet — enhancing saves a snapshot.",
+    draftLabel: "Original draft", pinFinal: "Pin final version", pinnedVersion: "Pinned version", unpin: "Unpin", updatePin: "Update pin",
+    delete: "Delete", copyResult: "Copy corrected",
+    saving: "Saving", savedAuto: "Saved", notSaved: "Not saved",
+    edit: "Edit", confirmDelete: "Delete?", yes: "Yes", no: "No", save: "Save changes",
+    editReport: "Edit report", editSource: "Edit source", colorLabel: "Report colour",
+    sourceTitleLabel: "Source title", sourceSummaryLabel: "Summary / abstract",
+    sourceIeeeLabel: "IEEE citation", sourceUrlLabel: "Source URL",
+    showSummary: "Show summary", hideSummary: "Hide summary", noSummary: "No summary.",
+    refNoLabel: "Reference number", refNoHint: "Used as [n] in your draft citations.",
+    refInvalid: "Enter a whole number of 1 or more.",
+    refTakenWarn: "This number is already used by", refTakenNote: "You can still save — two sources will share the same [n].",
+    deleteReportWarn: "This deletes the report and all its sources.",
+    synced: "Synced", localOnly: "Local", refresh: "Refresh", loadingHistory: "Loading history…",
+    syncedHint: "Version history is saved on the server for this draft.",
+    localHint: "Not saved on the server — this version lives in this session only.",
+    suggestionsTitle: "Suggested replies", insert: "Insert", contextTitle: "Knowledge base used",
+    agentsTitle: "Agent reports", riskLabel: "Needs rewrite", complianceLabel: "Policy warning",
+    view: "View", restore: "Restore", close: "Close",
+    resultTitle: "Enhanced result", correctedText: "Corrected & cited text", changesTitle: "Changes",
+    noChanges: "No changes needed.", fixedTypo: "Fixed typo", insertedCitation: "Inserted citation",
+    copy: "Copy", copied: "Copied!",
+    diffTitle: "Version diff", versionCol: "Saved version", currentCol: "Current draft",
+    originalInput: "Original Input", enhancedVersion: "Enhanced Version",
+    back: "Back",
+    // decision metadata
+    category: "Category", priority: "Priority", confidence: "Confidence",
+    ticketNo: "Ticket", human: "Human review", src: "Source", yes: "Yes", no: "No",
+    trace: "Decision trace", tool: "Tool",
+    actions: { answer: "Answer", create_ticket: "Create ticket", escalate: "Escalate", check_ticket: "Check ticket", summarize_url: "Summarize link" },
+    steps: { clean: "Clean message", lang: "Detect language", kb: "Search knowledge base", decide: "Decide action", run: "Run tool", save: "Save conversation" },
+    noMatch: "no reliable match", matched: "matched",
+    openTickets: "open",
+    q_answer: "What is CourseSync?", q_ct: "I need sources on quantum error correction",
+    q_esc: "My account was hacked and there is a fraudulent charge — I want a manager",
+    q_check: "What is the status of ticket #1?",
+    q_url: "Summarize this link:",
+  },
+  ar: {
+    brand: "سكرايب", tagline: "الكاتب الأكاديمي",
+    reports: "التقارير", reportsSub: "تقاريرك الأكاديمية ومصادرها البحثية.",
+    addReport: "إضافة تقرير", newReport: "تقرير بدون عنوان",
+    newReportTitle: "تقرير جديد", reportTitleLabel: "عنوان التقرير", dueDateLabel: "تاريخ التسليم",
+    optional: "اختياري", titleRequired: "الرجاء إدخال عنوان التقرير.", createReport: "إنشاء التقرير", dueLabel: "التسليم",
+    sources: "المصادر", sourcesSub: "مصادر هذا التقرير — وهي قاعدة معرفة الوكيل.",
+    addSource: "إضافة مصدر", upload: "رفع ملف", search: "بحث في المصادر",
+    tabFile: "رفع ملف", tabUrl: "إضافة رابط ويب", urlPh: "https://example.com/article",
+    fetchAdd: "جلب وإضافة المصدر", fetching: "جارٍ الجلب والتلخيص…",
+    resTitle: "العنوان", resSummary: "الملخّص", resCitation: "توثيق IEEE",
+    addToSources: "إضافة إلى المصادر", cancel: "إلغاء",
+    dropHint: "اختر ملف .txt أو .md أو .json أو .csv لإضافته كمصدر.",
+    chooseFile: "اختيار ملف", urlError: "أدخل رابطًا صحيحًا يبدأ بـ http:// أو https://",
+    backendNote: "وضع المعاينة: يُبنى التوثيق محليًا. على الخادم يقوم /api/sources/add-url بجلب الصفحة عبر trafilatura وتوليد العنوان والملخّص بالنموذج.",
+    citation: "التوثيق الأكاديمي", openWs: "فتح مساحة العمل", reportOf: "مصدر", fileTag: "ملف", webTag: "ويب", linkLabel: "رابط المصدر",
+    assistant: "مساعد الكتابة", send: "إرسال", thinking: "جارٍ العمل…", offline: "دون اتصال",
+    assistantCtx: "أجيب من مصادرك أنت — بلا اختراع محتوى.",
+    assistantIntro: "اسألني عن مصادرك:",
+    assistantExamples: ["«لخّص» — ملخّص هذا المصدر",
+                        "«ماذا تقول مصادري عن كذا؟»",
+                        "«استخرج أنواع VR» — يسحب قائمة من مصدر طويل",
+                        "«وثّق: <جملتك>» — يجد المصدر المناسب",
+                        "«نقاط رئيسية» — أهم ما في المصدر كقائمة"],
+    askAssistant: "اسأل عن مصادرك…", insertDraft: "إدراج في المسودة",
+    qExtract: "استخرج…", qSummarize: "لخّص", qKeyPoints: "نقاط رئيسية", qOutline: "هيكل التقرير",
+    intents: { extract: "استخراج", summarize: "ملخّص", keypoints: "نقاط رئيسية", search: "من مصادرك",
+               cite: "اقتراح توثيق", outline: "هيكل", help: "مساعدة" },
+    workspace: "مساحة العمل", agent: "الوكيل الذكي", ruleBadge: "قائم على القواعد · بدون مفتاح",
+    kbLabel: "قاعدة معرفة ScribeAI · CourseSync",
+    ctxNote: "اسأل عن المنصة — ScribeAI و CourseSync وتوثيق IEEE — أو عن مصادر هذا التقرير.",
+    ask: "راسل الوكيل…", send: "إرسال", tickets: "التذاكر",
+    empty: "اسأل عن المنصة (ScribeAI و CourseSync و IEEE)، أو عن مصادرك، أو الصق رابطًا لتلخيصه. يختار الوكيل الإجراء المناسب وينفّذ أداته.",
+    tryThese: "جرّب",
+    editor: "محرر المسودة",
+    draftPh: "اكتب مسودتك ثم حسّن الصياغة لإدراج توثيق IEEE وقسم المراجع…",
+    words: "كلمة", chars: "حرف", noSpaces: "بدون مسافات", pages: "صفحات", page: "صفحة", enhance: "تحسين وإدراج التوثيق", enhancing: "جارٍ التحسين…",
+    history: "سجل الإصدارات", noVersions: "لا توجد إصدارات بعد — التحسين يحفظ نسخة.",
+    draftLabel: "المسودة الأصلية", pinFinal: "تثبيت النسخة النهائية", pinnedVersion: "النسخة المثبّتة", unpin: "إلغاء التثبيت", updatePin: "تحديث التثبيت",
+    delete: "حذف", copyResult: "نسخ المصحّح",
+    saving: "جارٍ الحفظ", savedAuto: "محفوظة", notSaved: "غير محفوظة",
+    edit: "تعديل", confirmDelete: "حذف؟", yes: "نعم", no: "لا", save: "حفظ التعديلات",
+    editReport: "تعديل التقرير", editSource: "تعديل المصدر", colorLabel: "لون التقرير",
+    sourceTitleLabel: "عنوان المصدر", sourceSummaryLabel: "الملخّص / النبذة",
+    sourceIeeeLabel: "توثيق IEEE", sourceUrlLabel: "رابط المصدر",
+    showSummary: "إظهار التلخيص", hideSummary: "إخفاء التلخيص", noSummary: "لا يوجد ملخّص.",
+    refNoLabel: "رقم التوثيق", refNoHint: "يُستخدم كـ [n] في توثيق مسودتك.",
+    refInvalid: "أدخل رقمًا صحيحًا 1 أو أكثر.",
+    refTakenWarn: "هذا الرقم مستخدم بالفعل للمصدر", refTakenNote: "يمكنك الحفظ على أي حال — سيتشارك مصدران الرقم [n] نفسه.",
+    deleteReportWarn: "سيُحذف التقرير وكل مصادره.",
+    synced: "محفوظ", localOnly: "محلي", refresh: "تحديث", loadingHistory: "جارٍ تحميل السجل…",
+    syncedHint: "سجل الإصدارات محفوظ على الخادم لهذه المسودة.",
+    localHint: "غير محفوظ على الخادم — هذه النسخة في هذه الجلسة فقط.",
+    suggestionsTitle: "ردود مقترحة", insert: "إدراج", contextTitle: "مقالات المعرفة المستخدمة",
+    agentsTitle: "تقارير الوكلاء", riskLabel: "تحتاج إعادة صياغة", complianceLabel: "تحذير سياسة",
+    view: "عرض", restore: "استعادة", close: "إغلاق",
+    resultTitle: "النتيجة بعد التحسين", correctedText: "النص المصحّح والموثّق", changesTitle: "التغييرات",
+    noChanges: "لا توجد تغييرات.", fixedTypo: "تصحيح إملائي", insertedCitation: "إدراج توثيق",
+    copy: "نسخ", copied: "تم النسخ!",
+    diffTitle: "مقارنة الإصدارات", versionCol: "النسخة المحفوظة", currentCol: "المسودة الحالية",
+    originalInput: "النص الأصلي", enhancedVersion: "النسخة المحسّنة",
+    back: "رجوع",
+    category: "التصنيف", priority: "الأولوية", confidence: "الثقة",
+    ticketNo: "تذكرة", human: "مراجعة بشرية", src: "المصدر", yes: "نعم", no: "لا",
+    trace: "مسار القرار", tool: "الأداة",
+    actions: { answer: "إجابة", create_ticket: "فتح تذكرة", escalate: "تصعيد", check_ticket: "متابعة تذكرة", summarize_url: "تلخيص رابط" },
+    steps: { clean: "تنظيف الرسالة", lang: "تحديد اللغة", kb: "البحث في قاعدة المعرفة", decide: "اتخاذ القرار", run: "تشغيل الأداة", save: "حفظ المحادثة" },
+    noMatch: "لا تطابق موثوق", matched: "تطابق",
+    openTickets: "مفتوحة",
+    q_answer: "ما هي منصة CourseSync ومتابعة الدورات؟", q_ct: "أحتاج مصادر عن تصحيح الأخطاء الكمّي",
+    q_esc: "حسابي تم اختراقه ويوجد خصم احتيالي، أريد التحدث مع مدير",
+    q_check: "ما حالة التذكرة رقم 1؟",
+    q_url: "لخّص هذا الرابط:",
+  },
+};
+
+/* ---------- text helpers (shared by URL summariser + citation enhancer) ---------- */
+const TOKEN_RE = /[A-Za-z\u0600-\u06FF0-9]+/g;
+const STOP = new Set([
+  "من","إلى","على","في","عن","مع","هل","ما","كيف","هذا","هذه","التي","الذي","أن",
+  "لا","لم","و","أو","ثم","قد","كان","كل","the","a","an","is","are","to","of","in",
+  "on","and","or","for","how","what","do","does","my","i","you","it",
+]);
+const tokenize = (t) =>
+  (String(t).toLowerCase().match(TOKEN_RE) || []).filter((w) => !STOP.has(w) && w.length > 1);
+const termFreq = (toks) => toks.reduce((m, t) => ((m[t] = (m[t] || 0) + 1), m), {});
+function cosine(a, b) {
+  const keys = Object.keys(a).filter((k) => k in b);
+  const dot = keys.reduce((s, k) => s + a[k] * b[k], 0);
+  const na = Math.sqrt(Object.values(a).reduce((s, v) => s + v * v, 0));
+  const nb = Math.sqrt(Object.values(b).reduce((s, v) => s + v * v, 0));
+  return na && nb ? dot / (na * nb) : 0;
+}
+function summarizeExtractive(text, maxSentences = 3) {
+  const sentences = String(text).split(/(?<=[.!؟?])\s+/).map((s) => s.trim()).filter(Boolean);
+  if (sentences.length <= maxSentences) return sentences.join(" ");
+  const freqs = termFreq(tokenize(text));
+  const scored = sentences.map((s, i) => {
+    const toks = tokenize(s);
+    const score = toks.length ? toks.reduce((a, t) => a + (freqs[t] || 0), 0) / toks.length : 0;
+    return { score, i, s };
+  });
+  return scored.sort((a, b) => b.score - a.score).slice(0, maxSentences)
+    .sort((a, b) => a.i - b.i).map((x) => x.s).join(" ");
+}
+
+/* ---------- diff (LCS) ---------- */
+function wordDiff(a, b) {
+  const A = (a || "").split(/(\s+)/), B = (b || "").split(/(\s+)/);
+  const m = A.length, n = B.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = m - 1; i >= 0; i--) for (let j = n - 1; j >= 0; j--)
+    dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const out = []; let i = 0, j = 0;
+  while (i < m && j < n) {
+    if (A[i] === B[j]) { out.push({ t: A[i], type: "same" }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ t: A[i], type: "del" }); i++; }
+    else { out.push({ t: B[j], type: "add" }); j++; }
+  }
+  while (i < m) out.push({ t: A[i++], type: "del" });
+  while (j < n) out.push({ t: B[j++], type: "add" });
+  return out;
+}
+
+/* ---------- deterministic citation enhance ---------- */
+const REF_LIB = {
+  1: 'T. Nguyen and V. Reddy, "Deep reinforcement learning for autonomous cyber defense," IEEE Trans. Inf. Forensics Security, vol. 16, pp. 3120–3134, 2021.',
+  2: 'T. Alpcan and T. Başar, "A game-theoretic framework for network security," IEEE/ACM Trans. Netw., vol. 19, no. 4, pp. 1103–1116, 2011.',
+  3: 'A. Kott et al., "Autonomous intelligent agents for cyber defense," in Proc. AAMAS, 2019, pp. 45–53.',
+};
+function enhanceDraft(text) {
+  const rules = [ { n: 1, re: /(cybersecurity|تشفير)/i }, { n: 2, re: /(game|ألعاب)/i }, { n: 3, re: /(agent|وكلاء)/i } ];
+  const matched = []; let out = text;
+  rules.forEach(({ n, re }) => { if (re.test(out)) { matched.push(n); out = out.replace(re, (w) => `${w} [${n}]`); } });
+  const uniq = [...new Set(matched)].sort();
+  const refs = uniq.length ? "\n\nReferences\n" + uniq.map((n) => `[${n}] ${REF_LIB[n]}`).join("\n") : "";
+  return out + refs;
+}
+
+/* Common spelling/typo fixes for the offline preview (the backend LLM does
+   the full grammar pass). Curated to avoid ambiguous "corrections". */
+const COMMON_FIXES = {
+  colected: "collected", helo: "hello", teh: "the", thsi: "this", taht: "that",
+  recieve: "receive", recieved: "received", occured: "occurred", seperate: "separate",
+  definately: "definitely", wich: "which", becuase: "because", beacuse: "because",
+  thier: "their", alot: "a lot", adress: "address", enviroment: "environment",
+  goverment: "government", untill: "until", begining: "beginning", beleive: "believe",
+  calender: "calendar", tommorow: "tomorrow", wierd: "weird", accross: "across",
+  sucess: "success", neccessary: "necessary", occassion: "occasion", existance: "existence",
+  similiar: "similar", comitted: "committed", agumented: "augmented", augemented: "augmented",
+  technolgy: "technology", tecnology: "technology", knowlege: "knowledge",
+  cant: "can't", dont: "don't", doesnt: "doesn't", wont: "won't", isnt: "isn't",
+  arent: "aren't", wasnt: "wasn't", havent: "haven't", didnt: "didn't", im: "I'm",
+  ive: "I've", youre: "you're", theyre: "they're",
+};
+function matchCase(orig, fix) {
+  if (orig.length > 1 && orig === orig.toUpperCase()) return fix.toUpperCase();
+  if (orig[0] === orig[0].toUpperCase()) return fix[0].toUpperCase() + fix.slice(1);
+  return fix;
+}
+
+/* Light spelling/grammar tidy (preview fallback for the LLM pass). */
+function tidyText(text) {
+  let t = String(text)
+    .replace(/[ \t]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\s+([,.;:!?؟،])/g, "$1")
+    .replace(/([,;:،])(?=\S)/g, "$1 ")
+    .replace(/([.!?؟])(?=[A-Za-z\u0600-\u06FF])/g, "$1 ")
+    .replace(/\bi\b/g, "I");
+  t = t.replace(/(^|[.!?]\s+)([a-z])/g, (m, p, c) => p + c.toUpperCase());
+  return t.trim();
+}
+/* لوحة ألوان التقارير (accent) */
+const ACCENTS = [
+  { id: "royal",   c: "#1746c4" },
+  { id: "navy",    c: "#0b2148" },
+  { id: "teal",    c: "#0e7c86" },
+  { id: "green",   c: "#1f8a54" },
+  { id: "gold",    c: "#b3852f" },
+  { id: "crimson", c: "#c0392b" },
+  { id: "violet",  c: "#6b3fb0" },
+  { id: "pink",    c: "#c2418a" },
+  { id: "slate",   c: "#5b6b86" },
+];
+
+const CITE_THRESHOLD = 0.12;
+
+/* change-type colouring for the breakdown card */
+const CHANGE_COLOR = {
+  typo: C.amber, grammar: C.slate, tone: C.teal,
+  citation: C.royal, risk: C.gold, compliance: C.bad,
+};
+const AGENT_LABEL = {
+  researcher: { en: "Researcher", ar: "وكيل البحث" },
+  grammar_tone: { en: "Grammar & Tone", ar: "اللغة والنبرة" },
+  lead_synthesizer: { en: "Lead Synthesizer", ar: "الوكيل القائد" },
+};
+
+/* Source-aware enhance. Returns { text, changes } where changes is a list of
+   { type:'typo'|'format'|'citation', ... } used by the review card. */
+function enhanceWithSources(text, sources, lang) {
+  const isAr = lang === "ar";
+  const changes = [];
+
+  // 1) spelling/typo fixes (recorded, de-duplicated)
+  const seen = new Set();
+  const spellFixed = String(text).replace(/[A-Za-z]+/g, (w) => {
+    const fix = COMMON_FIXES[w.toLowerCase()];
+    if (!fix) return w;
+    const to = matchCase(w, fix);
+    const key = w + "→" + to;
+    if (!seen.has(key)) { seen.add(key); changes.push({ type: "typo", from: w, to }); }
+    return to;
+  });
+
+  // 2) grammar/spacing/casing tidy
+  const corrected = tidyText(spellFixed);
+  if (corrected !== spellFixed) {
+    changes.push({ type: "format", detail: isAr
+      ? "تصحيح المسافات وعلامات الترقيم وبدايات الجُمل"
+      : "Corrected spacing, punctuation & sentence casing" });
+  }
+
+  // 3) smart citation insertion
+  const refs = (sources || []).map((s, i) => ({
+    n: i + 1, ieee: s.ieee || "", title: isAr ? (s.titleAr || s.title) : s.title,
+    tf: termFreq(tokenize([s.title, s.titleAr, s.brief, s.briefAr, (s.content || "").slice(0, 4000)].filter(Boolean).join(" "))),
+  }));
+  const cited = new Set();
+  const out = corrected.split("\n").map((line) => {
+    if (!line.trim()) return line;
+    return line.split(/(?<=[.!؟?])\s+/).map((sen) => {
+      if (!sen.trim() || /\[\d+\]/.test(sen)) return sen;
+      const stf = termFreq(tokenize(sen));
+      if (!Object.keys(stf).length || !refs.length) return sen;
+      let best = null, score = 0;
+      for (const r of refs) { const c = cosine(stf, r.tf); if (c > score) { score = c; best = r; } }
+      if (best && score >= CITE_THRESHOLD) {
+        cited.add(best.n);
+        changes.push({ type: "citation", n: best.n, source: best.title });
+        return /[.!؟?]["']?\s*$/.test(sen)
+          ? sen.replace(/([.!؟?]["']?)\s*$/, ` [${best.n}]$1`)
+          : `${sen} [${best.n}]`;
+      }
+      return sen;
+    }).join(" ");
+  }).join("\n");
+
+  let finalText = out;
+  if (cited.size) {
+    const nums = [...cited].sort((a, b) => a - b);
+    const head = isAr ? "المراجع" : "References";
+    const list = nums.map((n) => `[${n}] ${(refs.find((r) => r.n === n).ieee || "").replace(/^\s*\[\d+\]\s*/, "")}`).join("\n");
+    finalText = `${out}\n\n${head}\n${list}`;
+  }
+  return { text: finalText, changes };
+}
+
+/* Real integration point: backend runs the LLM (grammar + smart citations),
+   with the local source-aware pass as an offline fallback. Returns {text, changes}. */
+/* ---------- persistence API (/api/reports, /api/sources) ---------- */
+const REPORTS_API = () => API_ROOT + "/api/reports";
+const SOURCES_API = () => API_ROOT + "/api/sources";
+
+function mapServerSource(s) {
+  const text = s.content || "";
+  return {
+    id: "srv" + s.id, serverId: s.id, refNo: s.n,
+    title: s.title, titleAr: s.title,
+    brief: s.summary || "", briefAr: s.summary || "",
+    content: text, page: text, pageAr: text,
+    url: s.url || "", ieee: s.ieee_citation || "",
+    web: !!s.url, file: !s.url && text ? "file" : undefined,
+  };
+}
+function mapServerReport(r) {
+  return {
+    id: r.id, title: r.title, titleAr: r.title_ar || r.title,
+    accent: r.accent || ACCENTS[0].c, dueDate: r.due_date || "",
+    sources: (r.sources || []).map(mapServerSource),
+  };
+}
+async function apiListReports() {
+  const r = await fetch(REPORTS_API());
+  if (!r.ok) throw new Error("reports api unavailable");
+  let rows = await r.json();
+  if (!Array.isArray(rows)) throw new Error("bad payload");
+  if (rows.length === 0) {                       // first run: create the starter reports once
+    const seeded = await fetch(REPORTS_API() + "/seed", { method: "POST" });
+    if (seeded.ok) rows = await seeded.json();
+  }
+  return rows.map(mapServerReport);
+}
+async function apiCreateReport({ title, accent, dueDate }) {
+  const r = await fetch(REPORTS_API(), {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, title_ar: title, accent, due_date: dueDate || null }),
+  });
+  if (!r.ok) throw new Error("create failed");
+  return mapServerReport(await r.json());
+}
+async function apiPatchReport(id, { title, accent, dueDate }) {
+  const r = await fetch(`${REPORTS_API()}/${encodeURIComponent(id)}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, title_ar: title, accent, due_date: dueDate || null }),
+  });
+  if (!r.ok) throw new Error("patch failed");
+}
+async function apiDeleteReport(id) {
+  const r = await fetch(`${REPORTS_API()}/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!r.ok) throw new Error("delete failed");
+}
+async function apiCreateSource(reportId, src) {
+  const r = await fetch(SOURCES_API(), {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      report_id: reportId, title: src.title, summary: src.brief || "",
+      content: src.content || "", url: src.url || "",
+      ieee_citation: src.ieee || "", ref_number: src.refNo,
+    }),
+  });
+  if (!r.ok) throw new Error("create source failed");
+  return await r.json();
+}
+async function apiPatchSource(serverId, body) {
+  const r = await fetch(`${SOURCES_API()}/${serverId}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((d && d.detail) || "patch failed");
+  return d;
+}
+
+/* ---------- stable citation numbers ----------
+   [n] must never change when a source is deleted, otherwise citations already
+   written into a draft would silently point at the wrong source.            */
+const refOf = (s, i) => (s && s.refNo != null ? s.refNo : i + 1);
+const nextRefNo = (sources) =>
+  (sources || []).reduce((max, s) => Math.max(max, s.refNo || 0), 0) + 1;
+/* Rewrites the leading [n] of an IEEE string so it matches our stable number. */
+const withRef = (ieee, n) => (ieee ? `[${n}] ${String(ieee).replace(/^\s*\[\d+\]\s*/, "")}` : ieee);
+
+/* ---------- draft autosave (/api/workspace/drafts/{id}/content) ---------- */
+async function fetchDraftContent(draftId) {
+  const r = await fetch(`${WS_API}/drafts/${encodeURIComponent(draftId)}/content`);
+  if (!r.ok) throw new Error("draft unavailable");
+  const d = await r.json();
+  return typeof d.text === "string" ? d.text : "";
+}
+async function saveDraftContent(draftId, text) {
+  const r = await fetch(`${WS_API}/drafts/${encodeURIComponent(draftId)}/content`, {
+    method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!r.ok) throw new Error("save failed");
+}
+
+/* ---------- shared: map report sources to the backend schema ---------- */
+function mapSourcesForApi(sources, isAr) {
+  return (sources || []).map((s, i) => ({
+    n: refOf(s, i),
+    title: (isAr ? (s.titleAr || s.title) : s.title) || "",
+    summary: (isAr ? (s.briefAr || s.brief) : s.brief) || "",
+    content: s.content || s.page || "",
+    url: s.url || "",
+    ieee_citation: s.ieee || "",
+  }));
+}
+
+/* ---------- writing-assistant chat (/api/workspace/chat) ---------- */
+async function askAssistant({ message, sources, draft, activeSourceN, isAr }) {
+  try {
+    const r = await fetch(`${WS_API}/chat`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message,
+        sources: mapSourcesForApi(sources, isAr),
+        draft: draft || "",
+        active_source_n: activeSourceN || null,
+        language: isAr ? "ar" : "en",
+      }),
+    });
+    const d = await r.json();
+    if (r.ok && d && d.reply) return { ...d, live: true };
+    throw new Error((d && d.detail) || "assistant unavailable");
+  } catch {
+    return { ...localAssistant(message, sources, draft, isAr), live: false };
+  }
+}
+
+/* Offline fallback: a small local version of the same helpers. */
+function localAssistant(message, sources, draft, isAr) {
+  const low = String(message).toLowerCase();
+  const srcs = mapSourcesForApi(sources, isAr);
+  const body = (s) => s.content || s.summary || s.title || "";
+  const first = srcs[0];
+  if (/لخ+ص|ملخ+ص|summar/i.test(low) && first) {
+    const sum = summarizeExtractive(body(first), 3);
+    return { reply: (isAr ? `ملخّص «${first.title}» [${first.n}]:\n` : `Summary of “${first.title}” [${first.n}]:\n`) + sum,
+             insert: `${sum} [${first.n}]`, citations: [first.n], intent: "summarize", source: "offline" };
+  }
+  if (/وث+ق|cite|citation/i.test(low) && srcs.length) {
+    const sentence = String(message).replace(/^.*?[:：]\s*/, "").trim() || draft;
+    const stf = termFreq(tokenize(sentence));
+    let best = null, sc = 0;
+    srcs.forEach((s) => { const c = cosine(stf, termFreq(tokenize(body(s) + " " + s.title))); if (c > sc) { sc = c; best = s; } });
+    if (best && sc >= CITE_THRESHOLD) {
+      return { reply: (isAr ? `أنسب مصدر: «${best.title}» → [${best.n}]` : `Best match: “${best.title}” → [${best.n}]`),
+               insert: `${sentence} [${best.n}]`, citations: [best.n], intent: "cite", source: "offline" };
+    }
+  }
+  return {
+    reply: isAr
+      ? "تعذّر الوصول إلى الخادم. شغّل uvicorn ثم أعد المحاولة — أو استخدم «لخّص» و«وثّق:» وهما يعملان محليًا."
+      : "The backend isn't reachable. Start uvicorn and try again — or use “summarize” and “cite:” which work locally.",
+    insert: "", citations: [], intent: "help", source: "offline",
+  };
+}
+
+/* ---------- version-history persistence (/api/workspace) ---------- */
+const API_ROOT = "";
+const WS_API = "/api/workspace";
+function mapServerVersion(v) {
+  return {
+    id: v.id, serverId: v.id,
+    ts: v.created_at ? new Date(v.created_at) : new Date(),
+    original: v.original_text || "",
+    text: v.refined_text || "",
+    changes: Array.isArray(v.changes) ? v.changes : [],
+    action: v.action || "",
+    origin: v.source || "",
+  };
+}
+async function fetchVersions(draftId) {
+  const r = await fetch(`${WS_API}/drafts/${encodeURIComponent(draftId)}/versions`);
+  if (!r.ok) throw new Error("history unavailable");
+  const rows = await r.json();
+  if (!Array.isArray(rows)) throw new Error("bad payload");
+  return rows.map(mapServerVersion);
+}
+async function deleteSourceRemote(serverId) {
+  const r = await fetch(`${API_ROOT}/api/sources/${serverId}`, { method: "DELETE" });
+  if (!r.ok) throw new Error("delete failed");
+}
+
+async function deleteVersionRemote(versionId) {
+  const r = await fetch(`${WS_API}/versions/${versionId}`, { method: "DELETE" });
+  if (!r.ok) throw new Error("delete failed");
+}
+
+async function enhanceViaBackend(text, sources, lang, opts = {}) {
+  try {
+    const r = await fetch("/api/workspace/enhance", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text, language: lang,
+        draft_id: opts.draftId || "default",
+        customer_id: opts.customerId || null,
+        // still sent so an academic-style backend can use them; the support
+        // pipeline retrieves its own articles from the knowledge base
+        sources: mapSourcesForApi(sources, lang === "ar"),
+      }),
+    });
+    if (r.ok) {
+      const d = await r.json();
+      const refined = d && (d.refined_draft || d.enhanced_text);
+      if (refined) {
+        let changes = Array.isArray(d.changes) ? d.changes : [];
+        if (!changes.length) {
+          // derive a minimal change list if the server sent none
+          const seen = new Set();
+          String(text).replace(/[A-Za-z]+/g, (w) => {
+            const fix = COMMON_FIXES[w.toLowerCase()];
+            if (fix) { const to = matchCase(w, fix); const k = w + to; if (!seen.has(k)) { seen.add(k); changes.push({ type: "typo", from: w, to }); } }
+            return w;
+          });
+          (d.cited || []).forEach((n) => changes.push({ type: "citation", n }));
+        }
+        return {
+          text: refined, changes,
+          suggestions: d.suggestions || [],
+          context: d.context || [],
+          agents: d.agents || [],
+          rationale: d.rationale || "",
+          action: (d.decision || {}).action || "",
+          versionId: d.version_id ?? null,
+          live: true,
+        };
+      }
+    }
+    throw new Error("backend unavailable");
+  } catch {
+    const local = enhanceWithSources(text, sources, lang);
+    return { ...local, suggestions: [], context: [], agents: [], rationale: "", action: "", live: false };
+  }
+}
+
+/* ---------- seed data ---------- */
+const DEMO_REPORTS = () => [
+  { id: "r1", title: "Autonomous Agents in Cybersecurity", titleAr: "الوكلاء المستقلون في الأمن السيبراني", accent: C.royal, sources: [
+    { id: "s1", refNo: 1, title: "RL for Autonomous Cyber Defense", titleAr: "التعلّم المعزّز للدفاع السيبراني الذاتي",
+      brief: "Deep reinforcement-learning controllers respond to intrusions in real time; cybersecurity reward-shaping keeps them stable and avoids reward hacking.",
+      briefAr: "متحكمات التعلّم المعزّز العميق تتصدى للاختراقات آنيًا، وتشكيل المكافأة يضمن استقرارها ويمنع استغلالها.", ieee: REF_LIB[1], url: "https://ieeexplore.ieee.org/",
+      page: "This paper studies deep reinforcement-learning controllers that defend networks autonomously. The agent observes traffic and system state, then selects containment actions in real time. Careful cybersecurity reward-shaping keeps training stable and prevents the policy from gaming its own reward. Across simulated intrusions, the learned defender lowers response time compared with static rule-based baselines. The authors note that reward design, not network depth, is the dominant factor in reliable behaviour.",
+      pageAr: "تدرس هذه الورقة متحكمات التعلّم المعزّز العميق التي تدافع عن الشبكات ذاتيًا. يراقب الوكيل حركة البيانات وحالة النظام ثم يختار إجراءات الاحتواء آنيًا. يضمن تصميم المكافأة المدروس استقرار التدريب ويمنع السياسة من استغلال مكافأتها. وعبر اختراقات محاكاة، يخفض المدافع المتعلّم زمن الاستجابة مقارنةً بالقواعد الثابتة. ويؤكد الباحثون أن تصميم المكافأة، لا عمق الشبكة، هو العامل الأهم في الموثوقية." },
+    { id: "s2", refNo: 2, title: "Game-Theoretic Attacker–Defender Models", titleAr: "نماذج نظرية الألعاب للمهاجم والمدافع",
+      brief: "A game framework where a defender allocates scarce monitoring against a strategic attacker; equilibria predict the optimal patching policy.",
+      briefAr: "إطار قائم على الألعاب يوزّع فيه المدافع موارد المراقبة الشحيحة ضد مهاجم استراتيجي، وتتنبأ نقاط التوازن بسياسة الترقيع المثلى.", ieee: REF_LIB[2], url: "https://dl.acm.org/",
+      page: "The work models security as a game between a defender with limited monitoring and a strategic attacker. Each side chooses actions to maximise its own payoff, and the analysis solves for the resulting equilibria. These equilibria predict which assets a rational attacker targets first and how a defender should allocate scarce attention. From this, the authors derive an optimal patching policy that spends effort where expected loss is highest. Experiments show the game-theoretic policy outperforms uniform patching under a fixed budget.",
+      pageAr: "يمثّل هذا العمل الأمن كلعبة بين مدافع محدود الموارد ومهاجم استراتيجي. يختار كل طرف إجراءاته لتعظيم عائده، ويحسب التحليل نقاط التوازن الناتجة. تتنبأ نقاط التوازن بالأصول التي يستهدفها المهاجم العقلاني أولًا وكيف يوزّع المدافع انتباهه الشحيح. ومن ذلك تُشتق سياسة ترقيع مثلى تنفق الجهد حيث تكون الخسارة المتوقعة أعلى. وتُظهر التجارب تفوّق السياسة القائمة على الألعاب على الترقيع المنتظم ضمن ميزانية ثابتة." },
+    { id: "s3", refNo: 3, title: "Multi-Agent Threat Detection", titleAr: "كشف التهديدات متعدد الوكلاء",
+      brief: "Coordinated software agents share threat signals across a network; the study measures detection latency as the agent population scales.",
+      briefAr: "وكلاء برمجية منسّقون يتبادلون إشارات التهديد عبر الشبكة، ويقيس البحث زمن الكشف مع تزايد عدد الوكلاء.", ieee: REF_LIB[3], url: "https://aamas.org/",
+      page: "This study deploys many coordinated software agents that share threat signals across a network. Instead of one central detector, each agent watches a segment and gossips suspicious events to its neighbours. The authors measure how detection latency changes as the agent population grows. Coordination keeps latency low even as the network scales, up to a saturation point. Beyond that point, message overhead begins to outweigh the benefit of adding more agents.",
+      pageAr: "تنشر هذه الدراسة وكلاء برمجية منسّقين يتبادلون إشارات التهديد عبر الشبكة. فبدل كاشف مركزي واحد، يراقب كل وكيل قطاعًا وينقل الأحداث المشبوهة إلى جيرانه. ويقيس الباحثون كيف يتغير زمن الكشف مع تزايد عدد الوكلاء. يبقي التنسيق زمن الكشف منخفضًا مع اتساع الشبكة حتى نقطة تشبّع. وبعد تلك النقطة يبدأ عبء الرسائل يفوق فائدة إضافة مزيد من الوكلاء." },
+  ] },
+  { id: "r2", title: "Gamification in Higher Education", titleAr: "التلعيب في التعليم العالي", accent: C.gold, sources: [
+    { id: "s4", refNo: 1, title: "Serious Games for Learning Outcomes", titleAr: "الألعاب الجادة ونواتج التعلّم",
+      brief: "Meta-analysis comparing a classroom game intervention against lecture-only controls on knowledge retention.",
+      briefAr: "تحليل بعدي يقارن تدخّلًا صفّيًا قائمًا على الألعاب بمجموعات ضابطة تعتمد المحاضرة في استبقاء المعرفة.", ieee: REF_LIB[2], url: "https://link.springer.com/",
+      page: "This meta-analysis pools classroom studies that compare a game-based intervention against lecture-only control groups. The primary outcome is knowledge retention measured weeks after instruction. Across the pooled studies, the game condition shows a small but consistent retention advantage. The effect is larger when the game gives immediate feedback and ties scoring to learning goals. The authors caution that poorly designed games can distract rather than help.",
+      pageAr: "يجمع هذا التحليل البعدي دراسات صفّية تقارن تدخلًا قائمًا على الألعاب بمجموعات ضابطة تعتمد المحاضرة. والناتج الأساسي هو استبقاء المعرفة مقيسًا بعد أسابيع من التدريس. وعبر الدراسات المجمّعة يظهر شرط اللعبة ميزة استبقاء صغيرة لكنها ثابتة. ويكبر الأثر حين تمنح اللعبة تغذية راجعة فورية وتربط التسجيل بأهداف التعلّم. ويحذّر الباحثون من أن الألعاب سيئة التصميم قد تشتّت بدل أن تفيد." },
+    { id: "s5", refNo: 2, title: "Pedagogical Agents as Tutors", titleAr: "الوكلاء التعليميون كمرشدين",
+      brief: "Evaluates a conversational agent tutor and the trust students place in its feedback across a semester.",
+      briefAr: "يقيّم وكيلًا تعليميًا حواريًا ومدى ثقة الطلاب في تغذيته الراجعة على مدى فصل دراسي.", ieee: REF_LIB[3], url: "https://www.jstor.org/",
+      page: "This paper evaluates a conversational agent that tutors students over a full semester. It tracks how much trust students place in the agent's feedback as they use it repeatedly. Trust rises when the agent explains its reasoning and admits uncertainty instead of bluffing. Students who trusted the tutor engaged with more practice problems and revised their work more often. The authors argue transparency, not fluency alone, drives durable adoption of pedagogical agents.",
+      pageAr: "تقيّم هذه الورقة وكيلًا حواريًا يرشد الطلاب على مدى فصل دراسي كامل. وتتتبّع مقدار الثقة التي يوليها الطلاب لتغذيته الراجعة مع الاستخدام المتكرر. وترتفع الثقة حين يشرح الوكيل استدلاله ويقرّ بعدم اليقين بدل التخمين. والطلاب الذين وثقوا بالمرشد تعاملوا مع تمارين أكثر ونقّحوا أعمالهم أكثر. ويرى الباحثون أن الشفافية، لا الطلاقة وحدها، هي ما يقود التبنّي الدائم للوكلاء التعليميين." },
+  ] },
+  { id: "r3", title: "LLM Reasoning Systems", titleAr: "أنظمة الاستدلال في النماذج اللغوية", accent: C.navy, sources: [
+    { id: "s6", refNo: 1, title: "Tool-Using Agent Architectures", titleAr: "معماريات الوكلاء المستخدِمين للأدوات",
+      brief: "How an agent plans, calls external tools, and reflects on results; ablations isolate which loop drives accuracy.",
+      briefAr: "كيف يخطّط الوكيل ويستدعي الأدوات الخارجية ويتأمل النتائج؛ وتحدّد التجارب الحلقة الأكثر تأثيرًا في الدقة.", ieee: REF_LIB[3], url: "https://arxiv.org/",
+      page: "This work dissects tool-using agent architectures into three loops: planning, tool calling, and reflection. The agent drafts a plan, invokes external tools to gather results, then reflects on whether the results satisfy the goal. Ablation studies remove each loop in turn to isolate its contribution to accuracy. Reflection provides the largest single gain, catching tool errors the planner alone would miss. The authors conclude that a cheap reflection step often beats a larger base model.",
+      pageAr: "يفكّك هذا العمل معماريات الوكلاء المستخدِمين للأدوات إلى ثلاث حلقات: التخطيط واستدعاء الأدوات والتأمل. يضع الوكيل خطة ثم يستدعي أدوات خارجية لجمع النتائج ثم يتأمل هل حققت النتائج الهدف. وتزيل تجارب الحذف كل حلقة على حدة لعزل إسهامها في الدقة. ويقدّم التأمل أكبر مكسب منفرد إذ يلتقط أخطاء الأدوات التي يغفلها المخطّط وحده. ويخلص الباحثون إلى أن خطوة تأمل رخيصة كثيرًا ما تتفوق على نموذج أساس أكبر." },
+  ] },
+];
+
+/* الافتراضي: منصة فارغة للزوّار. البيانات التجريبية تظهر فقط عبر ?demo=1 */
+const seedReports = () => {
+  try {
+    if (new URLSearchParams(location.search).get("demo") === "1") return DEMO_REPORTS();
+  } catch { /* ignore */ }
+  return [];
+};
+
+/* ============================================================ */
+export default function ScribeAI() {
+  const [lang, setLang] = useState("en");
+  const t = STR[lang]; const isAr = lang === "ar"; const dir = isAr ? "rtl" : "ltr";
+  const [screen, setScreen] = useState("reports");
+  const [fade, setFade] = useState(true);
+  const [reports, setReports] = useState(seedReports);
+  const [persisted, setPersisted] = useState(false);   // backend is storing our data
+  const [reportId, setReportId] = useState(null);
+
+  // load saved reports (with their sources) once; fall back to local demo data
+  useEffect(() => {
+    let cancelled = false;
+    apiListReports()
+      .then((rows) => { if (!cancelled) { setReports(rows); setPersisted(true); } })
+      .catch(() => { if (!cancelled) setPersisted(false); });
+    return () => { cancelled = true; };
+  }, []);
+  const [sourceId, setSourceId] = useState(null);
+
+  const report = reports.find((r) => r.id === reportId) || null;
+  const source = report?.sources.find((s) => s.id === sourceId) || null;
+
+  const go = (next, setup) => {
+    setFade(false);
+    setTimeout(() => { setup && setup(); setScreen(next); setFade(true); window.scrollTo({ top: 0 }); }, 150);
+  };
+  const font = isAr ? "'Cairo','Inter',sans-serif" : "'Inter',system-ui,sans-serif";
+
+  return (
+    <div dir={dir} style={{ fontFamily: font, background: C.mist, color: C.ink, minHeight: "100vh" }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Inter:wght@400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;0,6..72,700;1,6..72,400&display=swap');
+        *{box-sizing:border-box} textarea,input{font-family:inherit}
+        ::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:#c9d3e6;border-radius:9px}
+        @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+        .src-link{color:#1746c4;text-decoration:none}
+        .src-link:hover{text-decoration:underline}`}</style>
+
+      <TopBar t={t} isAr={isAr} lang={lang} setLang={setLang} screen={screen} report={report} source={source} go={go} />
+
+      <div style={{ maxWidth: 1180, margin: "0 auto", padding: "24px 20px 56px",
+        opacity: fade ? 1 : 0, transform: fade ? "none" : "translateY(6px)", transition: "opacity .2s, transform .2s" }}>
+        {screen === "reports" && (
+          <ReportsScreen t={t} isAr={isAr} reports={reports} setReports={setReports} persisted={persisted}
+            onOpen={(id) => go("sources", () => setReportId(id))} />
+        )}
+        {screen === "sources" && report && (
+          <SourcesScreen t={t} isAr={isAr} report={report} reports={reports} setReports={setReports}
+            persisted={persisted} onOpen={(sid) => go("workspace", () => setSourceId(sid))} />
+        )}
+        {screen === "workspace" && source && (
+          <Workspace t={t} isAr={isAr} report={report} source={source} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Top bar ---------------- */
+function TopBar({ t, isAr, lang, setLang, screen, report, source, go }) {
+  const crumb = [];
+  if (screen !== "reports") crumb.push({ label: t.reports, to: () => go("reports") });
+  if (screen === "sources" || screen === "workspace") crumb.push({ label: isAr ? report?.titleAr : report?.title, to: () => go("sources") });
+  if (screen === "workspace") crumb.push({ label: isAr ? source?.titleAr : source?.title });
+  return (
+    <div style={{ background: C.navy, color: C.white }}>
+      <div style={{ maxWidth: 1180, margin: "0 auto", padding: "0 20px", height: 62, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+          <div style={{ width: 34, height: 34, borderRadius: 9, background: C.royal2, display: "grid", placeItems: "center", flexShrink: 0, boxShadow: `0 0 0 4px ${C.royal}22` }}>
+            <span style={{ fontFamily: "Newsreader,serif", fontWeight: 700, fontSize: 20 }}>S</span>
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontFamily: "Newsreader,serif", fontWeight: 700, fontSize: 19, lineHeight: 1 }}>{t.brand}</div>
+            <div style={{ fontSize: 11, color: "#a9b8d6", marginTop: 3, letterSpacing: ".04em" }}>{t.tagline}</div>
+          </div>
+          {crumb.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginInlineStart: 18, fontSize: 13, color: "#c3d0ea", overflow: "hidden" }}>
+              {crumb.map((c, i) => (
+                <span key={i} style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+                  <span style={{ opacity: 0.5 }}>{isAr ? "‹" : "/"}</span>
+                  {c.to ? <button onClick={c.to} style={{ background: "none", border: "none", color: "#c3d0ea", cursor: "pointer", fontSize: 13, padding: 0 }}>{c.label}</button>
+                    : <span style={{ color: C.white, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>{c.label}</span>}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+        <button onClick={() => setLang(lang === "en" ? "ar" : "en")}
+          style={{ background: "rgba(255,255,255,.1)", border: "1px solid rgba(255,255,255,.18)", color: C.white, borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
+          {lang === "en" ? "العربية" : "English"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Screen 1: Reports ---------------- */
+function ReportsScreen({ t, isAr, reports, setReports, persisted, onOpen }) {
+  const [modal, setModal] = useState(null);   // {mode:"create"} | {mode:"edit", report}
+
+  const createReport = async ({ title, dueDate, accent }) => {
+    setModal(null);
+    if (persisted) {
+      try { const saved = await apiCreateReport({ title, accent, dueDate }); setReports((rs) => [saved, ...rs]); return; }
+      catch { /* fall through to a local-only report */ }
+    }
+    const id = "r" + Date.now();
+    setReports((rs) => [{ id, title, titleAr: title, accent: accent || ACCENTS[0].c, dueDate: dueDate || "", sources: [] }, ...rs]);
+  };
+  const updateReport = async (id, { title, dueDate, accent }) => {
+    setModal(null);
+    setReports((rs) => rs.map((r) => (r.id === id
+      ? { ...r, title, titleAr: title, dueDate: dueDate || "", accent: accent || r.accent } : r)));
+    if (persisted) { try { await apiPatchReport(id, { title, accent, dueDate }); } catch { /* keep local */ } }
+  };
+  const deleteReport = async (id) => {
+    setReports((rs) => rs.filter((r) => r.id !== id));
+    if (persisted) { try { await apiDeleteReport(id); } catch { /* keep local */ } }
+  };
+
+  const fmtDate = (d) => {
+    try { return new Date(d + "T00:00:00").toLocaleDateString(isAr ? "ar" : "en-GB", { day: "2-digit", month: "short", year: "numeric" }); }
+    catch { return d; }
+  };
+
+  return (
+    <div style={{ animation: "rise .3s ease" }}>
+      <Header title={t.reports} sub={t.reportsSub}
+        action={<div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span title={persisted ? t.syncedHint : t.localHint}
+            style={{ fontSize: 10.5, fontWeight: 700, borderRadius: 6, padding: "3px 8px",
+              color: persisted ? C.good : C.mut, background: persisted ? C.goodSoft : C.mist,
+              border: `1px solid ${persisted ? C.good + "44" : C.line}` }}>
+            {persisted ? `☁ ${t.synced}` : `● ${t.localOnly}`}
+          </span>
+          <PrimaryBtn onClick={() => setModal({ mode: "create" })}>+ {t.addReport}</PrimaryBtn>
+        </div>} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 18 }}>
+        {reports.map((r) => (
+          <div key={r.id} role="button" tabIndex={0}
+            onClick={() => onOpen(r.id)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(r.id); } }}
+            style={{ textAlign: isAr ? "right" : "left", background: C.white, border: `1px solid ${C.line}`,
+              borderRadius: 16, cursor: "pointer", overflow: "hidden", outline: "none",
+              boxShadow: "0 1px 2px rgba(15,27,51,.04)", transition: "transform .15s, box-shadow .15s" }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.boxShadow = "0 10px 26px rgba(15,27,51,.10)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 1px 2px rgba(15,27,51,.04)"; }}>
+            <div style={{ height: 6, background: r.accent }} />
+            <div style={{ padding: "20px 20px 16px" }}>
+              <div style={{ fontFamily: "Newsreader,serif", fontSize: 21, fontWeight: 600, lineHeight: 1.25 }}>
+                {isAr ? r.titleAr : r.title}
+              </div>
+              <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 8 }}>
+                <Pill accent={r.accent}>{r.sources.length}</Pill>
+                <span style={{ fontSize: 13, color: C.slate }}>{t.reportOf}</span>
+              </div>
+              {r.dueDate && (
+                <div style={{ marginTop: 10, fontSize: 12, color: C.slate, display: "flex", alignItems: "center", gap: 6 }}>
+                  <span aria-hidden="true">📅</span><span>{t.dueLabel}: {fmtDate(r.dueDate)}</span>
+                </div>
+              )}
+            </div>
+            {/* row actions — stopPropagation so they don't open the report */}
+            <div onClick={(e) => e.stopPropagation()}
+              style={{ borderTop: `1px solid ${C.line}`, background: C.mist, padding: "8px 12px",
+                display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
+              <button onClick={(e) => { e.stopPropagation(); setModal({ mode: "edit", report: r }); }}
+                style={miniBtn}>✎ {t.edit}</button>
+              <ConfirmBtn t={t} onConfirm={() => deleteReport(r.id)} title={t.deleteReportWarn} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {modal && (
+        <ReportModal t={t} isAr={isAr} mode={modal.mode} report={modal.report}
+          onClose={() => setModal(null)}
+          onSubmit={(vals) => (modal.mode === "edit" ? updateReport(modal.report.id, vals) : createReport(vals))} />
+      )}
+    </div>
+  );
+}
+
+/* ---------------- Report modal (create / edit) ---------------- */
+function ReportModal({ t, isAr, mode, report, onClose, onSubmit }) {
+  const editing = mode === "edit";
+  const [title, setTitle] = useState(editing ? (isAr ? report.titleAr : report.title) || "" : "");
+  const [dueDate, setDueDate] = useState(editing ? report.dueDate || "" : "");
+  const [accent, setAccent] = useState(editing ? report.accent || ACCENTS[0].c : ACCENTS[0].c);
+  const [err, setErr] = useState("");
+
+  const submit = () => {
+    if (!title.trim()) { setErr(t.titleRequired); return; }
+    onSubmit({ title: title.trim(), dueDate, accent });
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(11,33,72,.45)", display: "grid", placeItems: "center", padding: 20, zIndex: 50 }}>
+      <div onClick={(e) => e.stopPropagation()} dir={isAr ? "rtl" : "ltr"}
+        style={{ background: "#fff", borderRadius: 16, width: "min(460px,100%)", overflow: "hidden", boxShadow: "0 24px 60px rgba(0,0,0,.3)" }}>
+        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.line}` }}>
+          <b style={{ fontFamily: "Newsreader,serif", fontSize: 19 }}>{editing ? t.editReport : t.newReportTitle}</b>
+        </div>
+        <div style={{ padding: 20 }}>
+          <label style={{ fontSize: 12.5, fontWeight: 600, color: C.slate }}>
+            {t.reportTitleLabel} <span style={{ color: C.bad }}>*</span>
+          </label>
+          <input autoFocus value={title} onChange={(e) => { setTitle(e.target.value); setErr(""); }}
+            onKeyDown={(e) => { if (e.key === "Enter") submit(); }} placeholder={t.reportTitleLabel}
+            style={{ width: "100%", marginTop: 6, padding: "11px 13px", borderRadius: 10, border: `1px solid ${err ? C.bad : C.line}`, fontSize: 14, outline: "none", textAlign: isAr ? "right" : "left" }} />
+          {err && <div style={{ color: C.bad, fontSize: 12, marginTop: 6 }}>{err}</div>}
+
+          <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: C.slate, marginTop: 16 }}>
+            {t.dueDateLabel} <span style={{ color: C.mut, fontWeight: 400 }}>({t.optional})</span>
+          </label>
+          <input type="date" dir="ltr" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
+            style={{ width: "100%", marginTop: 6, padding: "10px 13px", borderRadius: 10, border: `1px solid ${C.line}`, fontSize: 14, outline: "none", color: C.ink, background: "#fff" }} />
+
+          <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: C.slate, marginTop: 16 }}>
+            {t.colorLabel}
+          </label>
+          <div style={{ display: "flex", gap: 9, marginTop: 9, flexWrap: "wrap" }}>
+            {ACCENTS.map((a) => {
+              const on = accent === a.c;
+              return (
+                <button key={a.id} onClick={() => setAccent(a.c)} title={a.id} aria-label={a.id}
+                  style={{ width: 30, height: 30, borderRadius: "50%", background: a.c, cursor: "pointer",
+                    border: on ? `2px solid ${C.white}` : "2px solid transparent",
+                    boxShadow: on ? `0 0 0 2.5px ${a.c}` : `0 0 0 1px ${C.line}`,
+                    transition: "box-shadow .15s" }} />
+              );
+            })}
+          </div>
+          <div style={{ marginTop: 12, height: 6, borderRadius: 4, background: accent }} />
+        </div>
+        <div style={{ padding: "14px 20px", borderTop: `1px solid ${C.line}`, display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button onClick={onClose} style={{ ...miniBtn, fontSize: 13.5, padding: "9px 16px" }}>{t.cancel}</button>
+          <button onClick={submit} disabled={!title.trim()}
+            style={{ background: title.trim() ? C.royal : C.line, color: title.trim() ? "#fff" : C.mut, border: "none", borderRadius: 10, padding: "9px 18px", fontWeight: 700, fontSize: 13.5, cursor: title.trim() ? "pointer" : "default" }}>
+            {editing ? t.save : t.createReport}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Source edit modal ---------------- */
+function SourceEditModal({ t, isAr, source, index, others, onClose, onSave }) {
+  const [title, setTitle] = useState((isAr ? source.titleAr : source.title) || "");
+  const [brief, setBrief] = useState((isAr ? source.briefAr : source.brief) || "");
+  const [ieee, setIeee] = useState(source.ieee || "");
+  const [url, setUrl] = useState(source.url || "");
+  const [refNo, setRefNo] = useState(String(refOf(source, index == null ? 0 : index)));
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  // a taken number is a warning, not an error — saving stays allowed
+  const parsed = parseInt(refNo, 10);
+  const clash = Number.isInteger(parsed)
+    ? (others || []).find((x) => refOf(x, -1) === parsed) : null;
+
+  const submit = async () => {
+    if (!title.trim()) { setErr(t.titleRequired); return; }
+    const n = parseInt(refNo, 10);
+    if (!Number.isInteger(n) || n < 1) { setErr(t.refInvalid); return; }
+    setErr(""); setBusy(true);
+    try {
+      await onSave({ title: title.trim(), brief, ieee, url, refNo: n });
+    } catch (e) {
+      setErr(String((e && e.message) || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const field = { width: "100%", marginTop: 6, padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.line}`, fontSize: 13.5, outline: "none", textAlign: isAr ? "right" : "left" };
+  const label = { fontSize: 12.5, fontWeight: 600, color: C.slate, display: "block", marginTop: 14 };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(11,33,72,.45)", display: "grid", placeItems: "center", padding: 20, zIndex: 50 }}>
+      <div onClick={(e) => e.stopPropagation()} dir={isAr ? "rtl" : "ltr"}
+        style={{ background: "#fff", borderRadius: 16, width: "min(560px,100%)", maxHeight: "88vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 60px rgba(0,0,0,.3)" }}>
+        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.line}` }}>
+          <b style={{ fontFamily: "Newsreader,serif", fontSize: 19 }}>{t.editSource}</b>
+        </div>
+        <div style={{ padding: "6px 20px 20px", overflowY: "auto" }}>
+          <label style={{ ...label, marginTop: 10 }}>{t.refNoLabel}</label>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: C.royal }}>[</span>
+            <input type="number" min="1" dir="ltr" value={refNo}
+              onChange={(e) => { setRefNo(e.target.value); setErr(""); }}
+              style={{ width: 84, padding: "9px 11px", borderRadius: 10, border: `1px solid ${C.line}`, fontSize: 14, outline: "none", textAlign: "center" }} />
+            <span style={{ fontSize: 15, fontWeight: 700, color: C.royal }}>]</span>
+            <span style={{ fontSize: 11.5, color: C.mut, lineHeight: 1.5 }}>{t.refNoHint}</span>
+          </div>
+          {clash && (
+            <div style={{ marginTop: 8, background: C.goldSoft, border: `1px solid ${C.gold}44`,
+              borderRadius: 9, padding: "8px 11px", fontSize: 12, color: C.ink, lineHeight: 1.6 }}>
+              <b style={{ color: C.gold }}>⚠ {t.refTakenWarn}</b>{" "}
+              <span>«{isAr ? (clash.titleAr || clash.title) : clash.title}»</span>
+              <div style={{ color: C.slate, marginTop: 3 }}>{t.refTakenNote}</div>
+            </div>
+          )}
+
+          <label style={{ ...label }}>{t.sourceTitleLabel} <span style={{ color: C.bad }}>*</span></label>
+          <input autoFocus value={title} onChange={(e) => { setTitle(e.target.value); setErr(""); }}
+            style={{ ...field, borderColor: err ? C.bad : C.line }} />
+          {err && <div style={{ color: C.bad, fontSize: 12, marginTop: 6 }}>{err}</div>}
+
+          <label style={label}>{t.sourceSummaryLabel}</label>
+          <textarea value={brief} onChange={(e) => setBrief(e.target.value)} rows={5}
+            style={{ ...field, resize: "vertical", lineHeight: 1.6 }} />
+
+          <label style={label}>{t.sourceIeeeLabel}</label>
+          <textarea dir="ltr" value={ieee} onChange={(e) => setIeee(e.target.value)} rows={3}
+            style={{ ...field, resize: "vertical", fontSize: 12.5, lineHeight: 1.5 }} />
+
+          <label style={label}>{t.sourceUrlLabel}</label>
+          <input dir="ltr" value={url} onChange={(e) => setUrl(e.target.value)} style={{ ...field, fontSize: 12.5 }} />
+        </div>
+        <div style={{ padding: "14px 20px", borderTop: `1px solid ${C.line}`, display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button onClick={onClose} style={{ ...miniBtn, fontSize: 13.5, padding: "9px 16px" }}>{t.cancel}</button>
+          <button onClick={submit} disabled={!title.trim() || busy}
+            style={{ background: !title.trim() || busy ? C.line : C.royal, color: !title.trim() || busy ? C.mut : "#fff", border: "none", borderRadius: 10, padding: "9px 18px", fontWeight: 700, fontSize: 13.5, cursor: !title.trim() || busy ? "default" : "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+            {busy && <Spinner />}{t.save}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Screen 2: Sources (+ file upload) ---------------- */
+/* ملخّص المصدر مع زر إظهار/إخفاء (يُطوى إن كان طويلًا) */
+function SourceSummary({ t, text, isAr }) {
+  const [open, setOpen] = useState(false);
+  const body = String(text || "");
+  const long = body.length > 220;                 // نطوي الطويل فقط
+  const shown = open || !long ? body : body.slice(0, 200).trimEnd() + "…";
+  return (
+    <div style={{ margin: "10px 0 14px", flexGrow: 1 }}>
+      <p style={{ fontSize: 13.5, color: C.slate, lineHeight: 1.6, margin: 0, whiteSpace: "pre-line" }}>
+        {shown || t.noSummary}
+      </p>
+      {long && (
+        <button onClick={() => setOpen((v) => !v)}
+          style={{ marginTop: 7, background: "none", border: "none", padding: 0, cursor: "pointer",
+            color: C.royal, fontSize: 12.5, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
+          {open ? `▲ ${t.hideSummary}` : `▼ ${t.showSummary}`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SourcesScreen({ t, isAr, report, reports, setReports, persisted, onOpen }) {
+  const [q, setQ] = useState("");
+  const [modal, setModal] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const setSources = (fn) => setReports(reports.map((r) => (r.id === report.id ? { ...r, sources: fn(r.sources) } : r)));
+  const addToReport = async (src) => {
+    setSources((list) => [src, ...list]);
+    // URL sources are already stored server-side; files/manual entries are not
+    if (persisted && src.serverId == null) {
+      try {
+        const saved = await apiCreateSource(report.id, src);
+        setSources((list) => list.map((x) => (x.id === src.id ? { ...x, serverId: saved.id, refNo: saved.n } : x)));
+      } catch { /* stays local */ }
+    }
+  };
+
+  /* duplicate reference numbers are allowed — the modal only warns */
+  const saveSource = async (src, vals) => {
+    const n = vals.refNo;
+    if (persisted && src.serverId != null) {
+      await apiPatchSource(src.serverId, {
+        title: vals.title, summary: vals.brief, url: vals.url,
+        ieee_citation: vals.ieee, ref_number: n,
+      });
+    }
+    setSources((list) => list.map((x) => (x.id === src.id
+      ? { ...x, refNo: n, title: vals.title, titleAr: vals.title, brief: vals.brief,
+          briefAr: vals.brief, ieee: withRef(vals.ieee, n), url: vals.url }
+      : x)));
+    setEditing(null);
+  };
+  const deleteSource = async (src) => {
+    setSources((list) => list.filter((x) => x.id !== src.id));      // optimistic
+    if (src.serverId != null) {
+      try { await deleteSourceRemote(src.serverId); } catch { /* stays removed locally */ }
+    }
+
+  };
+  const list = report.sources.filter((s) => ((isAr ? s.titleAr + s.briefAr : s.title + s.brief) || "").toLowerCase().includes(q.toLowerCase()));
+
+  return (
+    <div style={{ animation: "rise .3s ease" }}>
+      <div style={{ height: 5, width: 68, borderRadius: 4, background: report.accent, marginBottom: 12 }} />
+      <Header title={isAr ? report.titleAr : report.title} sub={t.sourcesSub}
+        action={<PrimaryBtn onClick={() => setModal(true)}>+ {t.addSource}</PrimaryBtn>} />
+
+      <div style={{ position: "relative", marginBottom: 20, maxWidth: 380 }}>
+        <span style={{ position: "absolute", insetInlineStart: 13, top: 11, color: C.mut }}>⌕</span>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.search}
+          style={{ width: "100%", padding: "11px 14px", paddingInlineStart: 34, borderRadius: 10, border: `1px solid ${C.line}`, background: C.white, fontSize: 14, outline: "none" }} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(320px,1fr))", gap: 18 }}>
+        {list.map((s, i) => (
+          <div key={s.id} style={{ background: C.white, border: `1px solid ${C.line}`, borderRadius: 16, padding: 20, display: "flex", flexDirection: "column", boxShadow: "0 1px 2px rgba(15,27,51,.04)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+              <div style={{ fontFamily: "Newsreader,serif", fontSize: 19, fontWeight: 600, lineHeight: 1.3 }}>
+                <span style={{ color: C.royal, fontFamily: "Inter,sans-serif", fontSize: 14, fontWeight: 700 }}>[{refOf(s, i)}]</span>{" "}
+                {isAr ? s.titleAr : s.title}
+              </div>
+              {s.file && <span style={{ fontSize: 10.5, fontWeight: 700, color: C.gold, background: C.goldSoft, borderRadius: 6, padding: "3px 7px", whiteSpace: "nowrap" }}>{t.fileTag}</span>}
+              {s.web && <span style={{ fontSize: 10.5, fontWeight: 700, color: C.teal, background: C.tealSoft, borderRadius: 6, padding: "3px 7px", whiteSpace: "nowrap" }}>{t.webTag}</span>}
+            </div>
+            <SourceSummary t={t} text={isAr ? s.briefAr : s.brief} isAr={isAr} />
+            <div style={{ background: C.mist, border: `1px solid ${C.line}`, borderRadius: 10, padding: "10px 12px", marginBottom: 14 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".08em", color: C.gold, textTransform: "uppercase", marginBottom: 5 }}>{t.citation}</div>
+              <div dir="ltr" style={{ fontSize: 12, lineHeight: 1.5, textAlign: isAr ? "right" : "left" }}>{s.ieee}</div>
+            </div>
+            {s.url && s.url !== "https://" && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".08em", color: C.gold, textTransform: "uppercase", marginBottom: 4 }}>{t.linkLabel}</div>
+                <a href={s.url} target="_blank" rel="noopener noreferrer" dir="ltr" className="src-link"
+                  style={{ fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 6, maxWidth: "100%" }}>
+                  <span aria-hidden="true">🔗</span>
+                  <span style={{ overflowWrap: "anywhere" }}>{s.url.replace(/^https?:\/\//, "")}</span>
+                </a>
+              </div>
+            )}
+            <button onClick={() => onOpen(s.id)} style={{ background: C.royalSoft, color: C.royal, border: `1px solid ${C.royal}33`, borderRadius: 10, padding: "10px 14px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>{t.openWs} →</button>
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.line}`, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
+              <button onClick={() => setEditing(s)} style={miniBtn}>✎ {t.edit}</button>
+              <ConfirmBtn t={t} onConfirm={() => deleteSource(s)} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {editing && (
+        <SourceEditModal t={t} isAr={isAr} source={editing} index={report.sources.indexOf(editing)}
+          others={report.sources.filter((x) => x.id !== editing.id)}
+          onClose={() => setEditing(null)}
+          onSave={(vals) => saveSource(editing, vals)} />
+      )}
+
+      {modal && (
+        <AddSourceModal t={t} isAr={isAr} reportSources={report.sources}
+          startIndex={nextRefNo(report.sources)} reportId={report.id}
+          onClose={() => setModal(false)}
+          onAdd={(src) => { addToReport(src); setModal(false); }} />
+      )}
+    </div>
+  );
+}
+
+/* ---------------- Add Source modal (Upload file | Add web URL) ---------------- */
+const HOST_BRANDS = {
+  "ieeexplore.ieee.org": "IEEE Xplore", "dl.acm.org": "ACM Digital Library",
+  "arxiv.org": "arXiv", "link.springer.com": "SpringerLink", "www.jstor.org": "JSTOR",
+  "jstor.org": "JSTOR", "aamas.org": "AAMAS", "en.wikipedia.org": "Wikipedia",
+};
+const PAGE_CACHE = {
+  "en.wikipedia.org": {
+    title: "Reinforcement learning",
+    text: "Reinforcement learning is an area of machine learning concerned with how agents take actions in an environment to maximise cumulative reward. It differs from supervised learning by not needing labelled input-output pairs. The agent learns from the consequences of its actions through trial and error. Balancing exploration of new actions against exploitation of known good actions is a central challenge. Modern methods combine reinforcement learning with deep neural networks to handle high-dimensional inputs.",
+  },
+};
+function urlParts(url) { try { const u = new URL(url); return { host: u.hostname, path: u.pathname }; } catch { return { host: "", path: "" }; } }
+const hostBrand = (host) => HOST_BRANDS[host] || host.replace(/^www\./, "") || "Web";
+function slugTitle(path, host) {
+  const seg = (path || "").split("/").filter(Boolean).pop() || "";
+  const s = decodeURIComponent(seg).replace(/\.(html?|php|aspx?)$/i, "").replace(/[-_]+/g, " ").trim();
+  return s ? s.replace(/\b\w/g, (c) => c.toUpperCase()) : hostBrand(host);
+}
+/* Preview-only: generate a realistic, structured mock summary from the page
+   title/URL when the real backend (trafilatura + LLM) isn't reachable. */
+const TOPIC_PACKS = [
+  { test: /augmented[\s_-]?realit|\bar\b|arkit|arcore|hololens/i, topicEn: "augmented reality (AR)", topicAr: "الواقع المعزّز (AR)",
+    en: [
+      "AR overlays computer-generated images, text, and 3D objects onto a live view of the real world.",
+      "It runs on phones, tablets, and headsets using camera tracking, depth sensing, and SLAM for spatial mapping.",
+      "Common applications include education, retail try-on, navigation, gaming, and industrial or medical training.",
+      "Key challenges remain accurate tracking, low-latency rendering, battery/compute limits, and user comfort.",
+    ],
+    ar: [
+      "يُركِّب الواقع المعزّز صورًا ونصوصًا وأجسامًا ثلاثية الأبعاد فوق مشهد حيّ من العالم الحقيقي.",
+      "يعمل على الهواتف والأجهزة اللوحية والنظارات عبر تتبّع الكاميرا واستشعار العمق ورسم الخرائط المكانية (SLAM).",
+      "تشمل تطبيقاته التعليم، وتجربة المنتجات في التجزئة، والملاحة، والألعاب، والتدريب الصناعي والطبي.",
+      "أبرز التحديات: دقة التتبّع، وتقليل زمن التأخير، وحدود البطارية والمعالجة، وراحة المستخدم.",
+    ] },
+  { test: /virtual[\s_-]?realit|\bvr\b|metaverse/i, topicEn: "virtual reality (VR)", topicAr: "الواقع الافتراضي (VR)",
+    en: [
+      "VR immerses the user in a fully simulated 3D environment through a head-mounted display.",
+      "It relies on stereoscopic rendering, head and hand tracking, and spatial audio for presence.",
+      "Uses span gaming, simulation and training, virtual collaboration, and therapy.",
+      "Challenges include motion sickness, hardware cost, and producing high-quality content at scale.",
+    ],
+    ar: [
+      "يغمر الواقع الافتراضي المستخدم في بيئة ثلاثية الأبعاد محاكاة بالكامل عبر نظّارة رأس.",
+      "يعتمد على العرض المجسّم وتتبّع الرأس واليدين والصوت المكاني لإحساس الحضور.",
+      "تشمل استخداماته الألعاب والمحاكاة والتدريب والتعاون الافتراضي والعلاج.",
+      "من تحدياته دوار الحركة وتكلفة العتاد وإنتاج محتوى عالي الجودة بكميات كبيرة.",
+    ] },
+  { test: /\bai\b|artificial[\s_-]?intelligen|machine[\s_-]?learn|\bllm\b|neural|deep[\s_-]?learn/i, topicEn: "artificial intelligence", topicAr: "الذكاء الاصطناعي",
+    en: [
+      "The article introduces core AI concepts and how modern models learn patterns from data.",
+      "It distinguishes machine learning, deep learning, and large language models with concrete examples.",
+      "It surveys real-world applications across language, vision, and decision-making.",
+      "It weighs limitations such as data quality, bias, interpretability, and compute cost.",
+    ],
+    ar: [
+      "يقدّم المقال المفاهيم الأساسية للذكاء الاصطناعي وكيف تتعلّم النماذج الأنماط من البيانات.",
+      "يميّز بين تعلّم الآلة والتعلّم العميق والنماذج اللغوية الكبيرة بأمثلة ملموسة.",
+      "يستعرض تطبيقات واقعية في اللغة والرؤية واتخاذ القرار.",
+      "يناقش قيودًا مثل جودة البيانات والتحيّز وقابلية التفسير وتكلفة الحوسبة.",
+    ] },
+  { test: /cyber|security|malware|phishing|encryption|تشفير/i, topicEn: "cybersecurity", topicAr: "الأمن السيبراني",
+    en: [
+      "The page explains the threat landscape and why cybersecurity is critical for organisations.",
+      "It outlines common attack types and the defensive controls that mitigate them.",
+      "It highlights best practices for identity, patching, and monitoring.",
+      "It notes emerging risks and how defenders are adapting.",
+    ],
+    ar: [
+      "تشرح الصفحة مشهد التهديدات ولماذا يُعدّ الأمن السيبراني حاسمًا للمؤسسات.",
+      "تحدّد أنواع الهجمات الشائعة والضوابط الدفاعية التي تحدّ منها.",
+      "تبرز أفضل الممارسات في الهوية والترقيع والمراقبة.",
+      "تشير إلى المخاطر الناشئة وكيف يتكيّف المدافعون معها.",
+    ] },
+];
+function mockSummary(title, url, lang) {
+  const hay = `${title} ${url}`;
+  const pack = TOPIC_PACKS.find((p) => p.test.test(hay));
+  const isAr = lang === "ar";
+  let intro, bullets;
+  if (pack) {
+    const topic = isAr ? pack.topicAr : pack.topicEn;
+    intro = isAr ? `ملخّص منظّم عن ${topic}:` : `Structured summary of ${topic}:`;
+    bullets = isAr ? pack.ar : pack.en;
+  } else {
+    const topic = title || (isAr ? "هذا الموضوع" : "this topic");
+    intro = isAr ? `ملخّص منظّم لصفحة «${topic}»:` : `Structured summary of "${topic}":`;
+    bullets = isAr ? [
+      `يعرّف بـ«${topic}» ويشرح الفكرة الأساسية بأسلوب مبسّط.`,
+      "يفكّك المكوّنات الرئيسية وكيف تعمل معًا.",
+      "يستعرض تطبيقات عملية وأمثلة واقعية بارزة.",
+      "يناقش القيود الحالية واتجاهات التطوّر المستقبلية.",
+    ] : [
+      `Introduces "${topic}" and explains the core idea in accessible terms.`,
+      "Breaks down the main components and how they fit together.",
+      "Reviews practical applications and notable real-world examples.",
+      "Discusses current limitations and where the field is heading.",
+    ];
+  }
+  const text = intro + "\n" + bullets.map((b) => "• " + b).join("\n");
+  const page = intro + " " + bullets.join(" ");
+  return { text, page };
+}
+
+function simulateUrlMeta(url, reportSources, startIndex, lang) {
+  const { host, path } = urlParts(url);
+  const brand = hostBrand(host);
+  const doc = (reportSources || []).find((d) => d.url && (url === d.url || url.startsWith(d.url) || d.url.startsWith(url)));
+  let title, fullText = null;
+  if (doc) { title = lang === "ar" ? doc.titleAr : doc.title; fullText = lang === "ar" ? (doc.pageAr || doc.briefAr) : (doc.page || doc.brief); }
+  else if (PAGE_CACHE[host]) { title = PAGE_CACHE[host].title; fullText = PAGE_CACHE[host].text; }
+  else { title = slugTitle(path, host); }
+
+  let summary, page, mock = false;
+  if (fullText) { summary = summarizeExtractive(fullText); page = fullText; }
+  else { const m = mockSummary(title, url, lang); summary = m.text; page = m.page; mock = true; }
+
+  const year = new Date().getFullYear();
+  const accessed = new Date().toLocaleDateString(lang === "ar" ? "ar" : "en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  const ieee = `[${startIndex}] ${brand}, "${title}," ${year}. [Online]. Available: ${url}. [Accessed: ${accessed}].`;
+  return { title, summary, page, ieee, url, hasText: !!fullText, mock, live: false };
+}
+async function fetchUrlMeta(url, reportSources, startIndex, lang, reportId) {
+  // Real integration point: the backend does trafilatura + LLM extraction.
+  try {
+    const r = await fetch("/api/sources/add-url", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, report_id: reportId || "default" }),
+    });
+    const d = await r.json();
+    if (r.ok && d && d.title) {
+      const bullets = (d.key_points || []).map((p) => "\u2022 " + p).join("\n");
+      return {
+        title: d.title,
+        summary: bullets ? `${d.summary}\n\n${bullets}` : d.summary,
+        page: d.content || d.summary,        // full page text -> feeds chat + citations
+        ieee: d.ieee_citation,
+        url: d.url || url,
+        siteName: d.site_name || "",
+        serverId: d.id ?? null,
+        words: d.word_count || 0,
+        hasText: true, mock: false, live: true,
+      };
+    }
+    throw new Error((d && d.detail) || "backend unavailable");
+  } catch (err) {
+    // Offline / no backend: fall back to the local preview so the flow still works.
+    const local = simulateUrlMeta(url, reportSources, startIndex, lang);
+    local.errorNote = String((err && err.message) || err || "");
+    return local;
+  }
+}
+
+function AddSourceModal({ t, isAr, reportSources, startIndex, reportId, onClose, onAdd }) {
+  const [tab, setTab] = useState("url");
+  const [url, setUrl] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+  const fileRef = useRef(null);
+  const lang = isAr ? "ar" : "en";
+
+  const fetchUrl = async () => {
+    const u = url.trim();
+    if (!/^https?:\/\/.+/i.test(u)) { setError(t.urlError); return; }
+    setError(""); setResult(null); setLoading(true);
+    const meta = await fetchUrlMeta(u, reportSources, startIndex, lang, reportId);
+    setResult(meta); setLoading(false);
+  };
+  const addUrlSource = () => {
+    if (!result) return;
+    const n = nextRefNo(reportSources);
+    onAdd({ id: "s" + Date.now(), refNo: n, serverId: result.serverId ?? null,
+      title: result.title, titleAr: result.title,
+      brief: result.summary, briefAr: result.summary,
+      content: result.page, page: result.page, pageAr: result.page,
+      url: result.url, ieee: withRef(result.ieee, n), web: true });
+  };
+  const onFiles = (e) => {
+    const files = [...(e.target.files || [])];
+    if (!files.length) return;
+    files.forEach((f) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = String(reader.result || "");
+        const name = f.name.replace(/\.[^.]+$/, "");
+        const preview = text.slice(0, 220) + (text.length > 220 ? "…" : "");
+        const n = nextRefNo(reportSources);
+        onAdd({ id: "s" + Date.now() + Math.floor(Math.random() * 1e4), refNo: n, title: name, titleAr: name,
+          brief: preview, briefAr: preview, content: text, file: f.name,
+          ieee: `[${n}] Uploaded document, "${f.name}," ${new Date().getFullYear()}.`, url: "" });
+      };
+      reader.readAsText(f);
+    });
+    e.target.value = "";
+  };
+
+  const tabBtn = (id, label) => (
+    <button onClick={() => { setTab(id); setError(""); }} style={{
+      flex: 1, padding: "11px 12px", border: "none", cursor: "pointer", fontWeight: 700, fontSize: 13.5,
+      background: tab === id ? C.white : "transparent", color: tab === id ? C.royal : C.slate,
+      borderBottom: tab === id ? `2px solid ${C.royal}` : `2px solid transparent`,
+    }}>{label}</button>
+  );
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(11,33,72,.45)", display: "grid", placeItems: "center", padding: 20, zIndex: 50 }}>
+      <div onClick={(e) => e.stopPropagation()} dir={isAr ? "rtl" : "ltr"} style={{ background: "#fff", borderRadius: 16, width: "min(560px,100%)", maxHeight: "88vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 60px rgba(0,0,0,.3)" }}>
+        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.line}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <b style={{ fontFamily: "Newsreader,serif", fontSize: 19 }}>{t.addSource}</b>
+          <button onClick={onClose} style={{ ...miniBtn, fontSize: 13 }}>{t.cancel}</button>
+        </div>
+
+        <div style={{ display: "flex", background: C.mist, borderBottom: `1px solid ${C.line}` }}>
+          {tabBtn("file", `↑ ${t.tabFile}`)}
+          {tabBtn("url", `🔗 ${t.tabUrl}`)}
+        </div>
+
+        <div style={{ padding: 20, overflowY: "auto" }}>
+          {tab === "file" ? (
+            <div style={{ textAlign: "center", border: `1.5px dashed ${C.line}`, borderRadius: 14, padding: "32px 20px" }}>
+              <div style={{ fontSize: 30, marginBottom: 10 }}>📄</div>
+              <div style={{ fontSize: 13.5, color: C.slate, marginBottom: 16 }}>{t.dropHint}</div>
+              <button onClick={() => fileRef.current?.click()} style={{ background: C.royal, color: "#fff", border: "none", borderRadius: 11, padding: "11px 20px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>{t.chooseFile}</button>
+              <input ref={fileRef} type="file" accept=".txt,.md,.markdown,.json,.csv,.text" multiple onChange={onFiles} style={{ display: "none" }} />
+            </div>
+          ) : (
+            <div>
+              <label style={{ fontSize: 12.5, fontWeight: 600, color: C.slate }}>{t.tabUrl}</label>
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <input dir="ltr" value={url} onChange={(e) => { setUrl(e.target.value); setError(""); }} placeholder={t.urlPh}
+                  onKeyDown={(e) => { if (e.key === "Enter") fetchUrl(); }}
+                  style={{ flex: 1, padding: "11px 13px", borderRadius: 10, border: `1px solid ${error ? C.bad : C.line}`, fontSize: 14, outline: "none", textAlign: isAr ? "right" : "left" }} />
+                <button onClick={fetchUrl} disabled={loading}
+                  style={{ background: loading ? C.line : C.teal, color: loading ? C.mut : "#fff", border: "none", borderRadius: 10, padding: "0 16px", fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap", cursor: loading ? "default" : "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+                  {loading && <Spinner light />}{loading ? t.fetching : t.fetchAdd}
+                </button>
+              </div>
+              {error && <div style={{ color: C.bad, fontSize: 12, marginTop: 6 }}>{error}</div>}
+
+              {loading && (
+                <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 10, color: C.slate, fontSize: 13 }}>
+                  <Spinner /> {t.fetching}
+                </div>
+              )}
+
+              {result && !loading && (
+                <div style={{ marginTop: 18, border: `1px solid ${C.line}`, borderRadius: 14, overflow: "hidden", animation: "rise .25s ease" }}>
+                  <div style={{ background: C.tealSoft, color: C.teal, padding: "8px 14px", fontSize: 11.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 8, background: C.teal }} />
+                    {result.live ? "summarize_url_tool · live" : "summarize_url_tool · preview"}
+                  </div>
+                  <div style={{ padding: 16 }}>
+                    <Field label={t.resTitle}><b style={{ fontSize: 15 }}>{result.title}</b></Field>
+                    <Field label={t.resSummary}><span style={{ fontSize: 13.5, color: C.ink, lineHeight: 1.6, whiteSpace: "pre-line", display: "block" }}>{result.summary}</span></Field>
+                    <Field label={t.resCitation}>
+                      <span dir="ltr" style={{ fontSize: 12, color: C.ink, lineHeight: 1.55, display: "block", textAlign: isAr ? "right" : "left" }}>{result.ieee}</span>
+                    </Field>
+                    {result.mock && <div style={{ fontSize: 11.5, color: C.mut, marginTop: 4, lineHeight: 1.5 }}>{t.backendNote}</div>}
+                    <button onClick={addUrlSource} style={{ marginTop: 14, width: "100%", background: C.royal, color: "#fff", border: "none", borderRadius: 11, padding: 12, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>+ {t.addToSources}</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+function Field({ label, children }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: C.gold, marginBottom: 4 }}>{label}</div>
+      {children}
+    </div>
+  );
+}
+function Workspace({ t, isAr, report, source }) {
+  // the draft lives here so the chat can read it (review) and write to it (insert)
+  const [draft, setDraft] = useState("");
+  const [saveState, setSaveState] = useState("idle");   // idle | saving | saved | local
+  const draftId = `${report.id}:${source.id}`;
+  const activeSourceN = refOf(source, Math.max(0, report.sources.findIndex((s) => s.id === source.id)));
+
+  const loadedFor = useRef(null);
+  const saveTimer = useRef(null);
+
+  // load the autosaved draft for this source instead of wiping it
+  useEffect(() => {
+    let cancelled = false;
+    loadedFor.current = null;
+    setDraft("");
+    setSaveState("idle");
+    fetchDraftContent(draftId)
+      .then((text) => { if (!cancelled) { setDraft(text); loadedFor.current = draftId; setSaveState(text ? "saved" : "idle"); } })
+      .catch(() => { if (!cancelled) { loadedFor.current = draftId; setSaveState("local"); } });
+    return () => { cancelled = true; clearTimeout(saveTimer.current); };
+  }, [draftId]);
+
+  // debounced autosave — only after the initial load for this draft has settled
+  useEffect(() => {
+    if (loadedFor.current !== draftId) return;
+    clearTimeout(saveTimer.current);
+    setSaveState((st) => (st === "local" ? "local" : "saving"));
+    saveTimer.current = setTimeout(() => {
+      saveDraftContent(draftId, draft)
+        .then(() => setSaveState("saved"))
+        .catch(() => setSaveState("local"));
+    }, 1200);
+    return () => clearTimeout(saveTimer.current);
+  }, [draft, draftId]);
+
+  return (
+    <div style={{ animation: "rise .3s ease", display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 18 }}>
+      <ChatPane t={t} isAr={isAr} sources={report.sources} source={source}
+        activeSourceN={activeSourceN} draft={draft} setDraft={setDraft} />
+      <EditorPane t={t} isAr={isAr} source={source} sources={report.sources}
+        draftId={draftId} draft={draft} setDraft={setDraft} saveState={saveState} />
+    </div>
+  );
+}
+
+/* يعرض مخطط التقرير: الأقسام الرئيسية كبيرة غامقة، العناوين الفرعية غامقة */
+function OutlineText({ text }) {
+  const lines = String(text).split("\n");
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      {lines.map((ln, i) => {
+        const main = /^\d+\.\s/.test(ln);                 // 1. Introduction
+        const src = /^\s{3}\d+\.\s/.test(ln);             // 3-space indent: source title
+        const sub = /^\s{6}-\s/.test(ln);                  // 6-space indent: subheading
+        if (main) return <div key={i} style={{ fontSize: 16, fontWeight: 800, color: C.ink, marginTop: i ? 8 : 0 }}>{ln}</div>;
+        if (src)  return <div key={i} style={{ fontSize: 13.5, fontWeight: 700, color: C.royal, marginInlineStart: 10 }}>{ln.trim()}</div>;
+        if (sub)  return <div key={i} style={{ fontSize: 13, fontWeight: 700, color: C.navy, marginInlineStart: 24 }}>{ln.trim()}</div>;
+        return <div key={i} style={{ fontSize: 12, color: C.slate, fontStyle: "italic", marginTop: 6 }}>{ln}</div>;
+      })}
+    </div>
+  );
+}
+
+/* ---------- Left: writing-assistant chat ---------- */
+function ChatPane({ t, isAr, sources, source, activeSourceN, draft, setDraft }) {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const scroller = useRef(null);
+
+  useEffect(() => { setMessages([]); }, [source.id]);
+  useEffect(() => {
+    if (scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight;
+  }, [messages, busy]);
+
+  const send = async (text) => {
+    const msg = (text ?? input).trim();
+    if (!msg || busy) return;
+    setMessages((m) => [...m, { role: "user", text: msg }]);
+    setInput(""); setBusy(true);
+    const res = await askAssistant({ message: msg, sources, draft, activeSourceN, isAr });
+    setMessages((m) => [...m, { role: "assistant", ...res }]);
+    setBusy(false);
+  };
+
+  const insert = (text) => {
+    if (!text) return;
+    setDraft((d) => (d && d.trim() ? d.trimEnd() + "\n\n" + text : text));
+  };
+
+  const chips = [
+    { label: t.qExtract, fill: isAr ? "استخرج أنواع " : "extract types of " },
+    { label: t.qSummarize, text: isAr ? "لخّص" : "summarize" },
+    { label: t.qKeyPoints, text: isAr ? "نقاط رئيسية" : "key points" },
+    { label: t.qOutline, text: isAr ? "هيكل التقرير" : "outline" },
+  ];
+
+  return (
+    <Panel style={PANE_HEIGHT}>
+      <PaneHead icon="◆" title={t.assistant} right={
+        <span style={{ fontSize: 11, color: C.slate }}>
+          {sources.length} {t.reportOf}
+        </span>
+      } />
+
+      <div style={{ background: C.royalSoft, borderInlineStart: `3px solid ${C.royal}`, padding: "8px 12px", fontSize: 12, color: C.royal, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ fontWeight: 700 }}>[{activeSourceN}] {isAr ? source.titleAr : source.title}</span>
+        <span style={{ color: C.slate, fontSize: 11.5 }}>· {t.assistantCtx}</span>
+      </div>
+
+      <div ref={scroller} style={{ flex: 1, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+        {messages.length === 0 && !busy && (
+          <div style={{ margin: "auto", maxWidth: 300, color: C.slate, fontSize: 12.5, lineHeight: 1.8, flexShrink: 0 }}>
+            <b style={{ color: C.ink, fontSize: 13 }}>{t.assistantIntro}</b>
+            <div style={{ marginTop: 8 }} dir={isAr ? "rtl" : "ltr"}>
+              {t.assistantExamples.map((ex, i) => (
+                <div key={i} style={{ display: "flex", gap: 6 }}>
+                  <span style={{ color: C.mut }}>•</span><span>{ex}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {messages.map((m, i) => m.role === "user" ? (
+          <div key={i} style={{ display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
+            <div style={{ maxWidth: "86%", background: C.royal, color: "#fff", padding: "9px 13px", borderRadius: 13, fontSize: 13.5, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{m.text}</div>
+          </div>
+        ) : (
+          <div key={i} style={{ border: `1px solid ${C.line}`, borderRadius: 13, overflow: "hidden", background: "#fff", flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 11px", background: C.mist, borderBottom: `1px solid ${C.line}` }}>
+              <span style={{ fontSize: 10.5, fontWeight: 700, color: C.royal, letterSpacing: ".03em" }}>
+                {t.intents[m.intent] || m.intent || "—"}
+                {m.live === false && <span style={{ color: C.mut, fontWeight: 400 }}> · {t.offline}</span>}
+              </span>
+              {m.insert ? (
+                <button onClick={() => insert(m.insert)} style={{ ...miniBtn, color: C.royal, borderColor: `${C.royal}44` }}>
+                  + {t.insertDraft}
+                </button>
+              ) : null}
+            </div>
+            <div dir={isAr ? "rtl" : "ltr"} style={{ padding: "10px 12px", fontSize: 13.5, lineHeight: 1.7, color: C.ink }}>
+              {m.intent === "outline" ? <OutlineText text={m.reply} /> :
+                <span style={{ whiteSpace: "pre-wrap" }}>{m.reply}</span>}
+            </div>
+            {m.citations && m.citations.length > 0 && (
+              <div style={{ padding: "0 12px 10px", display: "flex", gap: 5, flexWrap: "wrap" }}>
+                {m.citations.map((n) => (
+                  <span key={n} style={{ fontSize: 10.5, fontWeight: 700, color: C.royal, background: C.royalSoft, borderRadius: 6, padding: "2px 7px" }}>[{n}]</span>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+
+        {busy && (
+          <div style={{ display: "flex", alignItems: "center", gap: 9, color: C.slate, fontSize: 12.5, padding: "2px 4px", flexShrink: 0 }}>
+            <Spinner /> {t.thinking}
+          </div>
+        )}
+      </div>
+
+      <div style={{ padding: "0 12px 8px", display: "flex", gap: 5, flexWrap: "wrap" }}>
+        {chips.map((c, i) => (
+          <button key={i} onClick={() => (c.fill ? setInput(c.fill) : send(c.text))} disabled={busy}
+            style={{ fontSize: 11.5, fontWeight: 600, color: C.royal, background: C.royalSoft, border: `1px solid ${C.royal}33`, borderRadius: 20, padding: "5px 11px", cursor: busy ? "default" : "pointer" }}>
+            {c.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ borderTop: `1px solid ${C.line}`, padding: 11, display: "flex", gap: 8 }}>
+        <textarea value={input} onChange={(e) => setInput(e.target.value)} rows={1} placeholder={t.askAssistant}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+          style={{ flex: 1, resize: "none", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.line}`, fontSize: 13.5, outline: "none", maxHeight: 110 }} />
+        <button onClick={() => send()} disabled={busy || !input.trim()}
+          style={{ background: busy || !input.trim() ? C.line : C.royal, color: busy || !input.trim() ? C.mut : "#fff", border: "none", borderRadius: 10, padding: "0 16px", fontWeight: 700, fontSize: 13.5, cursor: busy || !input.trim() ? "default" : "pointer" }}>
+          {t.send}
+        </button>
+      </div>
+    </Panel>
+  );
+}
+
+/* ---------- Right: editor + versions (fully local) ---------- */
+function EditorPane({ t, isAr, source, sources, draftId, draft, setDraft, saveState }) {
+  const [pinned, setPinned] = useState(null);   // stabilized final version, shown above (read-only)
+  const [versions, setVersions] = useState([]);
+  const [synced, setSynced] = useState(false);      // history is backed by the server
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [enhancing, setEnhancing] = useState(false);
+  const [diffOf, setDiffOf] = useState(null);
+  const [result, setResult] = useState(null);
+  const words = draft.trim() ? draft.trim().split(/\s+/).length : 0;
+  const charsWith = draft.length;
+  const charsNo = draft.replace(/\s/g, "").length;
+  const pages = words === 0 ? 0 : Math.max(1, Math.ceil(words / 275)); // ~275 words/page
+  const nf = (n) => n.toLocaleString(isAr ? "ar" : "en");
+  const dirOf = (s) => (/[\u0600-\u06FF]/.test(String(s || "")) ? "rtl" : "ltr");
+
+  // load persisted version history for this draft; fall back to local-only
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingHistory(true);
+    setResult(null);
+    fetchVersions(draftId)
+      .then((rows) => { if (!cancelled) { setVersions(rows); setSynced(true); } })
+      .catch(() => { if (!cancelled) { setVersions([]); setSynced(false); } })
+      .finally(() => { if (!cancelled) setLoadingHistory(false); });
+    return () => { cancelled = true; };
+  }, [draftId]);
+
+  const reloadHistory = () => {
+    setLoadingHistory(true);
+    fetchVersions(draftId)
+      .then((rows) => { setVersions(rows); setSynced(true); })
+      .catch(() => setSynced(false))
+      .finally(() => setLoadingHistory(false));
+  };
+
+  const pinFinal = () => { if (draft.trim()) setPinned(draft); };
+  const unpin = () => setPinned(null);
+  const enhance = async () => {
+    if (!draft.trim() || enhancing) return;
+    setEnhancing(true);
+    const res = await enhanceViaBackend(draft, sources, isAr ? "ar" : "en", { draftId });
+    // the server persists the version and returns its id; otherwise keep it local
+    const version = {
+      id: res.versionId != null ? res.versionId : Date.now(),
+      serverId: res.versionId != null ? res.versionId : null,
+      ts: new Date(), original: draft, text: res.text, changes: res.changes,
+      action: res.action || "",
+    };
+    setVersions((v) => [version, ...v]);
+    if (res.versionId != null) setSynced(true);
+    setResult(res);
+    setEnhancing(false);
+  };
+  const removeVersion = async (ver) => {
+    setVersions((v) => v.filter((x) => x.id !== ver.id));           // optimistic
+    if (ver.serverId != null) {
+      try { await deleteVersionRemote(ver.serverId); }
+      catch { setVersions((v) => [ver, ...v].sort((a, b) => b.ts - a.ts)); }  // rollback
+    }
+  };
+  const loadVersion = (ver) => { setDraft(ver.text); setResult(null); };
+  const fmt = (d) => d.toLocaleString(isAr ? "ar" : "en-GB", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" });
+
+  return (
+    <Panel style={PANE_HEIGHT}>
+      <PaneHead icon="✎" title={t.editor} right={
+        <span style={{ fontSize: 11, fontWeight: 600, color: saveState === "saved" ? C.good : saveState === "local" ? C.mut : C.slate }}>
+          {saveState === "saving" ? `… ${t.saving}` : saveState === "saved" ? `✓ ${t.savedAuto}` : saveState === "local" ? `● ${t.notSaved}` : ""}
+        </span>
+      } />
+      <div style={{ padding: 14, flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain" }}>
+
+        {/* pinned final version — sits ABOVE the draft, read-only, does not lock it */}
+        {pinned != null && (
+          <div style={{ marginBottom: 14, border: `1px solid ${C.royal}44`, borderRadius: 14, overflow: "hidden", animation: "rise .25s ease", flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 12px", background: C.royalSoft, borderBottom: `1px solid ${C.line}`, flexWrap: "wrap" }}>
+              <b style={{ fontSize: 12, color: C.royal, letterSpacing: ".04em" }}>📌 {t.pinnedVersion}</b>
+              <div style={{ display: "flex", gap: 6 }}>
+                <CopyBtn text={pinned} t={t} />
+                <button onClick={pinFinal} style={miniBtn}>↻ {t.updatePin}</button>
+                <button onClick={unpin} style={{ ...miniBtn, color: C.bad, borderColor: `${C.bad}44` }}>✕ {t.unpin}</button>
+              </div>
+            </div>
+            <div dir={dirOf(pinned)} style={{ padding: 14, fontSize: 13.5, lineHeight: 1.7, whiteSpace: "pre-wrap", color: C.ink, background: C.mist, maxHeight: 180, overflowY: "auto", textAlign: dirOf(pinned) === "rtl" ? "right" : "left" }}>{pinned}</div>
+          </div>
+        )}
+
+        {/* original draft — ALWAYS editable */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8, flexShrink: 0 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: C.gold }}>{t.draftLabel}</span>
+          {pinned == null && (
+            <button onClick={pinFinal} disabled={!draft.trim()}
+              style={{ background: draft.trim() ? C.navy : C.line, color: draft.trim() ? "#fff" : C.mut, border: "none", borderRadius: 9, padding: "7px 14px", fontWeight: 700, fontSize: 12.5, cursor: draft.trim() ? "pointer" : "default", display: "flex", alignItems: "center", gap: 6 }}>
+              📌 {t.pinFinal}
+            </button>
+          )}
+        </div>
+        <textarea value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={t.draftPh}
+          style={{ minHeight: 170, flexShrink: 0, resize: "vertical", padding: 14, borderRadius: 12, border: `1px solid ${C.line}`, fontSize: 14.5, lineHeight: 1.7, outline: "none", background: "#fcfdff", color: C.ink }} />
+
+        <div style={{ display: "flex", gap: 8, marginTop: 12, flexShrink: 0 }}>
+          <button onClick={enhance} disabled={enhancing || !draft.trim()}
+            style={{ flex: 1, background: enhancing || !draft.trim() ? C.line : C.royal, color: enhancing || !draft.trim() ? C.mut : "#fff", border: "none", borderRadius: 11, padding: 12, fontWeight: 700, fontSize: 14, cursor: enhancing || !draft.trim() ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            {enhancing && <Spinner light />}{enhancing ? t.enhancing : `✦ ${t.enhance}`}
+          </button>
+        </div>
+
+        {/* changes breakdown ONLY — the pinned draft above is never overwritten */}
+        {result && (
+          <div style={{ marginTop: 14, border: `1px solid ${C.line}`, borderRadius: 14, overflow: "hidden", animation: "rise .25s ease", flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 12px", background: C.royalSoft, borderBottom: `1px solid ${C.line}` }}>
+              <b style={{ fontSize: 12.5, color: C.royal }}>✦ {t.changesTitle}</b>
+              <CopyBtn text={result.text} t={t} label={t.copyResult} />
+            </div>
+            <div style={{ padding: 14 }}>
+              {result.changes.length === 0 ? (
+                <div style={{ fontSize: 12.5, color: C.mut }}>{t.noChanges}</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {result.changes.map((c, i) => {
+                    const col = CHANGE_COLOR[c.type] || C.slate;
+                    const warn = c.type === "compliance" || c.type === "risk";
+                    return (
+                      <div key={i} style={{ fontSize: 12.5, color: C.ink, display: "flex", gap: 8, alignItems: "baseline",
+                        background: warn ? (c.type === "compliance" ? C.badSoft : C.goldSoft) : "transparent",
+                        borderRadius: warn ? 8 : 0, padding: warn ? "6px 9px" : 0 }}>
+                        <span style={{ fontSize: 9, lineHeight: "18px", color: col }}>{warn ? "▲" : "●"}</span>
+                        <span dir={isAr ? "rtl" : "ltr"}>
+                          {c.type === "typo" && <>{t.fixedTypo}: <b>“{c.from}”</b> → <b>“{c.to}”</b></>}
+                          {c.type === "citation" && <>{t.insertedCitation} <b>[{c.n}]</b>{(c.source || c.detail) ? ` — ${c.source || c.detail}` : ""}</>}
+                          {c.type !== "typo" && c.type !== "citation" && (
+                            <>{warn && <b style={{ color: col }}>{c.type === "compliance" ? t.complianceLabel : t.riskLabel}: </b>}{c.detail || ""}</>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* suggested replies from the Lead Synthesizer */}
+              {result.suggestions && result.suggestions.length > 0 && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: C.gold, marginBottom: 6 }}>{t.suggestionsTitle}</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {result.suggestions.map((s, i) => (
+                      <div key={i} style={{ border: `1px solid ${C.line}`, borderRadius: 10, padding: "9px 11px", background: C.mist }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
+                          <b style={{ fontSize: 12, color: C.royal }}>{s.title || `#${i + 1}`}</b>
+                          <button onClick={() => setDraft((d) => (d.trim() ? d.trimEnd() + " " + s.text : s.text))}
+                            style={{ ...miniBtn, color: C.royal, borderColor: `${C.royal}44` }}>+ {t.insert}</button>
+                        </div>
+                        <div dir={isAr ? "rtl" : "ltr"} style={{ fontSize: 12.5, color: C.slate, lineHeight: 1.55 }}>{s.text}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </div>
+        )}
+
+        {/* version history */}
+        <div style={{ marginTop: 16, flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".08em", color: C.gold, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 8 }}>
+              {t.history}
+              <span title={synced ? t.syncedHint : t.localHint}
+                style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0, borderRadius: 6, padding: "2px 7px",
+                  color: synced ? C.good : C.mut, background: synced ? C.goodSoft : C.mist, border: `1px solid ${synced ? C.good + "44" : C.line}` }}>
+                {synced ? `☁ ${t.synced}` : `● ${t.localOnly}`}
+              </span>
+            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {loadingHistory && <Spinner />}
+              <button onClick={reloadHistory} disabled={loadingHistory} style={miniBtn}>↻ {t.refresh}</button>
+            </div>
+          </div>
+          {versions.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: C.mut }}>{loadingHistory ? t.loadingHistory : t.noVersions}</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 200, overflowY: "auto" }}>
+              {versions.map((v, i) => (
+                <div key={v.id} style={{ display: "flex", alignItems: "center", gap: 6, background: C.mist, border: `1px solid ${C.line}`, borderRadius: 9, padding: "8px 10px", flexWrap: "wrap" }}>
+                  <span style={{ width: 22, height: 22, borderRadius: 6, background: C.navy, color: "#fff", fontSize: 11, fontWeight: 700, display: "grid", placeItems: "center", flexShrink: 0 }}>{versions.length - i}</span>
+                  <span style={{ fontSize: 12.5, color: C.slate, flex: 1, minWidth: 84 }}>{fmt(v.ts)}</span>
+                  {v.action && <span style={{ fontSize: 10, fontWeight: 700, color: C.royal, background: C.royalSoft, borderRadius: 6, padding: "2px 7px", whiteSpace: "nowrap" }}>{v.action}</span>}
+                  {v.serverId == null && <span title={t.localHint} style={{ fontSize: 10, color: C.mut }}>●</span>}
+                  <CopyBtn text={v.text} t={t} />
+                  <button onClick={() => setDiffOf(v)} style={miniBtn}>{t.view}</button>
+                  <button onClick={() => loadVersion(v)} style={{ ...miniBtn, color: C.royal, borderColor: `${C.royal}44` }}>{t.restore}</button>
+                  <button onClick={() => removeVersion(v)} title={t.delete} aria-label={t.delete}
+                    style={{ ...miniBtn, color: C.bad, borderColor: `${C.bad}44` }}>🗑</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "8px 16px", borderTop: `1px solid ${C.line}`, background: C.mist, fontSize: 12, color: C.slate, flexWrap: "wrap" }}>
+        <span><b style={{ color: C.ink }}>{nf(words)}</b> {t.words}</span>
+        <span style={{ color: C.line }}>·</span>
+        <span><b style={{ color: C.ink }}>{nf(charsWith)}</b> {t.chars} <span style={{ color: C.mut }}>({nf(charsNo)} {t.noSpaces})</span></span>
+        <span style={{ color: C.line }}>·</span>
+        <span dir="ltr">~<b style={{ color: C.ink }}>{nf(pages)}</b> {pages === 1 ? t.page : t.pages}</span>
+      </div>
+      {diffOf && <DiffModal t={t} isAr={isAr} version={diffOf} current={draft} onClose={() => setDiffOf(null)} onRestore={() => { loadVersion(diffOf); setDiffOf(null); }} />}
+    </Panel>
+  );
+}
+
+function CopyBtn({ text, t, label, style }) {
+  const [done, setDone] = useState(false);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(text); }
+    catch {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        document.execCommand("copy"); ta.remove();
+      } catch { /* ignore */ }
+    }
+    setDone(true); setTimeout(() => setDone(false), 1200);
+  };
+  return (
+    <button onClick={copy} style={{ ...miniBtn, ...(done ? { color: C.good, borderColor: `${C.good}55` } : {}), ...(style || {}) }}>
+      {done ? `✓ ${t.copied}` : `⧉ ${label || t.copy}`}
+    </button>
+  );
+}
+
+function DiffModal({ t, isAr, version, current, onClose, onRestore }) {
+  const dirOf = (s) => (/[\u0600-\u06FF]/.test(String(s || "")) ? "rtl" : "ltr");
+  const originalText = version.original != null ? version.original : (current || "");
+  const enhancedText = version.text != null ? version.text : (current || "");
+  const diff = wordDiff(originalText, enhancedText);
+  const left = diff.filter((d) => d.type !== "add");   // original (with removals)
+  const right = diff.filter((d) => d.type !== "del");  // enhanced (with additions)
+  const render = (arr, kind) => arr.map((d, i) => {
+    const bg = d.type === "same" ? "transparent" : kind === "del" ? C.badSoft : C.goodSoft;
+    const col = d.type === "same" ? C.ink : kind === "del" ? C.bad : C.good;
+    return <span key={i} style={{ background: bg, color: col, borderRadius: 3, textDecoration: d.type === "del" ? "line-through" : "none" }}>{d.t}</span>;
+  });
+  const columns = [
+    { kind: "del", label: t.originalInput, arr: left, text: originalText, color: C.slate },
+    { kind: "add", label: t.enhancedVersion, arr: right, text: enhancedText, color: C.good },
+  ];
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(11,33,72,.45)", display: "grid", placeItems: "center", padding: 20, zIndex: 50 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "min(880px,100%)", maxHeight: "82vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 60px rgba(0,0,0,.3)" }}>
+        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.line}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <b style={{ fontFamily: "Newsreader,serif", fontSize: 18 }}>{t.diffTitle}</b>
+          <button onClick={onClose} style={{ ...miniBtn, fontSize: 13 }}>{t.close}</button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", overflow: "auto" }}>
+          {columns.map((c, idx) => {
+            const d = dirOf(c.text);
+            return (
+              <div key={idx} style={{ padding: 18, borderInlineStart: idx ? `1px solid ${C.line}` : "none" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: c.color, marginBottom: 10 }}>{c.label}</div>
+                <div dir={d} style={{ fontSize: 13.5, lineHeight: 1.75, whiteSpace: "pre-wrap", textAlign: d === "rtl" ? "right" : "left" }}>{render(c.arr, c.kind)}</div>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ padding: "14px 20px", borderTop: `1px solid ${C.line}`, display: "flex", justifyContent: "flex-end" }}>
+          <button onClick={onRestore} style={{ background: C.royal, color: "#fff", border: "none", borderRadius: 10, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>{t.restore}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- atoms ---------- */
+function ConfirmBtn({ t, onConfirm, title, style }) {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const id = setTimeout(() => setArmed(false), 4000);   // auto-cancel
+    return () => clearTimeout(id);
+  }, [armed]);
+  if (!armed) {
+    return (
+      <button onClick={(e) => { e.stopPropagation(); setArmed(true); }} title={title || t.delete}
+        aria-label={title || t.delete}
+        style={{ ...miniBtn, color: C.bad, borderColor: `${C.bad}44`, ...(style || {}) }}>🗑</button>
+    );
+  }
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+      <span style={{ fontSize: 11, color: C.bad, fontWeight: 700 }}>{t.confirmDelete}</span>
+      <button onClick={(e) => { e.stopPropagation(); setArmed(false); onConfirm(); }}
+        style={{ ...miniBtn, color: "#fff", background: C.bad, borderColor: C.bad }}>{t.yes}</button>
+      <button onClick={(e) => { e.stopPropagation(); setArmed(false); }} style={miniBtn}>{t.no}</button>
+    </span>
+  );
+}
+
+const miniBtn = { background: "#fff", border: `1px solid ${C.line}`, borderRadius: 7, padding: "5px 10px", fontSize: 12, fontWeight: 600, color: C.slate, cursor: "pointer" };
+function Header({ title, sub, action }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, marginBottom: 22, flexWrap: "wrap" }}>
+      <div><h1 style={{ fontFamily: "Newsreader,serif", fontSize: 30, fontWeight: 700, margin: 0, lineHeight: 1.1 }}>{title}</h1>
+        <p style={{ color: C.slate, fontSize: 14, margin: "8px 0 0" }}>{sub}</p></div>
+      {action}
+    </div>
+  );
+}
+function PrimaryBtn({ children, onClick }) {
+  return <button onClick={onClick} style={{ background: C.royal, color: "#fff", border: "none", borderRadius: 11, padding: "12px 20px", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: "0 4px 14px rgba(23,70,196,.28)" }}>{children}</button>;
+}
+function Pill({ children, accent }) {
+  return <span style={{ minWidth: 26, height: 26, borderRadius: 8, background: (accent || C.royal) + "1a", color: accent || C.royal, fontWeight: 700, fontSize: 13, display: "grid", placeItems: "center", padding: "0 8px" }}>{children}</span>;
+}
+function Panel({ children, style }) {
+  return (
+    <div style={{
+      background: C.white, border: `1px solid ${C.line}`, borderRadius: 16,
+      display: "flex", flexDirection: "column", minHeight: 580, overflow: "hidden",
+      boxShadow: "0 1px 3px rgba(15,27,51,.05)", ...(style || {}),
+    }}>{children}</div>
+  );
+}
+
+/* Fixed viewport-relative height: the page stops growing as content piles up,
+   and each pane scrolls internally instead. */
+const PANE_HEIGHT = { height: "calc(100vh - 150px)", minHeight: 460, maxHeight: 820 };
+function PaneHead({ icon, title, right }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 16px", borderBottom: `1px solid ${C.line}`, gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+        <span style={{ width: 26, height: 26, borderRadius: 8, background: C.navy, color: "#fff", display: "grid", placeItems: "center", fontSize: 13 }}>{icon}</span>
+        <b style={{ fontSize: 15 }}>{title}</b>
+      </div>
+      {right}
+    </div>
+  );
+}
+function Spinner({ light }) {
+  return <span style={{ width: 15, height: 15, borderRadius: "50%", border: `2px solid ${light ? "rgba(255,255,255,.4)" : "#c9d3e6"}`, borderTopColor: light ? "#fff" : C.royal, display: "inline-block", animation: "spin .7s linear infinite" }} />;
+}
