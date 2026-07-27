@@ -28,11 +28,11 @@ from typing import Optional, TypedDict
 
 from sqlalchemy.orm import Session
 
-from app.config import settings
-from app.models import AgentDecision
-from app.prompts import SYSTEM_PROMPT, build_decision_prompt
-from app import tools as tools_module
-from app.rag import search_knowledge, RagResult
+from config import settings
+from models import AgentDecision
+from prompts import SYSTEM_PROMPT, build_decision_prompt
+import tools as tools_module
+from rag import search_knowledge, RagResult
 
 from langgraph.graph import StateGraph, END
 
