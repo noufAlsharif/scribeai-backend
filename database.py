@@ -25,7 +25,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
-from app.config import settings
+from config import settings
 
 # -------------------------------------------------------------------
 # إعداد المحرك (Engine) والجلسة (Session)
