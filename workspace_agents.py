@@ -43,8 +43,8 @@ from langgraph.graph import StateGraph, END
 
 from config import settings
 from models import AgentDecision
-from app import rag as rag_module
-from app import tools as tools_module
+import rag as rag_module
+import tools as tools_module
 from agent import detect_language, rule_based_decision
 from prompts import (
     RESEARCHER_PROMPT,
