@@ -24,7 +24,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from database import Ticket, Conversation, get_or_create_customer
-from app import rag as rag_module
+import rag as rag_module
 
 # نمط للتعرف على رقم تذكرة داخل نص حر، مثل: "TCK-12"، "#12"، "تذكرة 12"
 _TICKET_REF_PATTERN = re.compile(
