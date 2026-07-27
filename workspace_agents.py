@@ -41,12 +41,12 @@ from typing import Dict, List, Optional, Set, Tuple, TypedDict
 
 from langgraph.graph import StateGraph, END
 
-from app.config import settings
-from app.models import AgentDecision
+from config import settings
+from models import AgentDecision
 from app import rag as rag_module
 from app import tools as tools_module
-from app.agent import detect_language, rule_based_decision
-from app.prompts import (
+from agent import detect_language, rule_based_decision
+from prompts import (
     RESEARCHER_PROMPT,
     GRAMMAR_TONE_PROMPT,
     SYNTHESIZER_PROMPT,
