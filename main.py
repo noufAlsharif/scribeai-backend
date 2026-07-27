@@ -12,7 +12,7 @@ from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from app.database import init_db, get_db, Conversation, Ticket
+from database import init_db, get_db, Conversation, Ticket
 from app.models import (
     ChatRequest,
     ChatResponse,
