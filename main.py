@@ -20,9 +20,9 @@ from models import (
     TicketResponse,
     TicketStatusUpdate,
 )
-from app import agent as agent_module
-from app import tools as tools_module
-from app.workspace_api import router as workspace_router, init_workspace_db
+import agent as agent_module
+import tools as tools_module
+from workspace_api import router as workspace_router, init_workspace_db
 from sources_api import router as sources_router, init_sources_db
 from reports_api import router as reports_router, init_reports_db
 from workspace_api import router as workspace_router, init_workspace_db
