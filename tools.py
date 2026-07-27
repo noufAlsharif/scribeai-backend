@@ -23,7 +23,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.database import Ticket, Conversation, get_or_create_customer
+from database import Ticket, Conversation, get_or_create_customer
 from app import rag as rag_module
 
 # نمط للتعرف على رقم تذكرة داخل نص حر، مثل: "TCK-12"، "#12"، "تذكرة 12"
