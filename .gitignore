@@ -1,0 +1,29 @@
+# بيئة بايثون الافتراضية
+.venv/
+venv/
+env/
+
+# ملفات بايثون المترجمة
+__pycache__/
+*.pyc
+*.pyo
+
+# ملف البيئة الفعلي (يحتوي على أسرار مثل مفاتيح API)
+.env
+
+# قاعدة البيانات المحلية وملفات الاختبار
+*.db
+*.sqlite3
+customer_service.db
+smoke_test.db
+test_*.db
+
+# ملفات المحرر ونظام التشغيل
+.vscode/
+.idea/
+.DS_Store
+
+# نتائج الاختبارات
+.pytest_cache/
+htmlcov/
+.coverage
