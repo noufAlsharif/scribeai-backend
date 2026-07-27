@@ -34,8 +34,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, Integer, String, Text
 from sqlalchemy.orm import Session
 
-from app.database import Base, engine, get_db
-from app.writing_assistant import split_sentences, summarize_extractive, term_freq, tokenize
+from database import Base, engine, get_db
+from writing_assistant import split_sentences, summarize_extractive, term_freq, tokenize
 
 router = APIRouter(prefix="/api/sources", tags=["المصادر"])
 
