@@ -34,12 +34,7 @@ from fastapi.middleware.cors import CORSMiddleware
 # (تأكدي من صحة اسم الملفات والمجلدات لديكِ)
 
 
-from database import (
-    init_db,
-    init_workspace_db,
-    init_sources_db,
-    init_reports_db,
-)
+
 
 # 1. إنشاء التطبيق
 app = FastAPI(
