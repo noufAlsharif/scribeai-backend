@@ -25,9 +25,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, Integer, String, Text
 from sqlalchemy.orm import Session
 
-from app.database import Base, engine, get_db
-from app.workspace_agents import enhance_draft, load_word_bank
-from app.writing_assistant import answer_writing_query, enhance_academic
+from database import Base, engine, get_db
+from workspace_agents import enhance_draft, load_word_bank
+from writing_assistant import answer_writing_query, enhance_academic
 
 router = APIRouter(prefix="/api/workspace", tags=["مساحة العمل"])
 
