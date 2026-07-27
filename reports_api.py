@@ -28,8 +28,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, Integer, String
 from sqlalchemy.orm import Session
 
-from app.database import Base, engine, get_db
-from app.sources_api import Source, SourceOut, _source_to_out
+from database import Base, engine, get_db
+from sources_api import Source, SourceOut, _source_to_out
 
 router = APIRouter(prefix="/api/reports", tags=["التقارير"])
 
